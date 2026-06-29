@@ -1,0 +1,102 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: exchange-grpc-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - exchange
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: exchange-grpc-jaeger
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      - exchange
+
+  spot-instrument:
+    build:
+      context: ..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE: spot-instrument-service
+    container_name: exchange-grpc-spot-instrument
+    ports:
+      - "50051:50051"
+      - "9090:9090"
+    environment:
+      SPOT_INSTRUMENT_ADDR: ":50051"
+      SPOT_METRICS_ADDR: ":9090"
+      REDIS_ADDR: "redis:6379"
+      REDIS_CACHE_TTL: "30s"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+    depends_on:
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/metrics"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - exchange
+
+  order-service:
+    build:
+      context: ..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE: order-service
+    container_name: exchange-grpc-order
+    ports:
+      - "50052:50052"
+      - "9091:9091"
+    environment:
+      ORDER_ADDR: ":50052"
+      ORDER_METRICS_ADDR: ":9091"
+      SPOT_INSTRUMENT_HOST: "spot-instrument:50051"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+    depends_on:
+      spot-instrument:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9091/metrics"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - exchange
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: exchange-grpc-prometheus
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      spot-instrument:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    networks:
+      - exchange
+
+networks:
+  exchange:
+    driver: bridge

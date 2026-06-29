@@ -1,0 +1,33 @@
+# Бинарники
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Тесты
+*.test
+coverage.out
+coverage.html
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ОС
+.DS_Store
+Thumbs.db
+
+# Окружение
+.env
+.env.*
+
+# Сгенерированные файлы (раскомментируйте, если генерируете только локально)
+# api/proto/exchange/v1/*.pb.go

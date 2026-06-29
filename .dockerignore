@@ -1,0 +1,11 @@
+.git
+.gitignore
+bin/
+**/*.exe
+**/*.test
+coverage.out
+deployments/
+README.md
+Makefile
+scripts/
+test/

@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package exchange.v1;
+
+option go_package = "github.com/exchange-grpc/api/proto/exchange/v1;exchangev1";
+
+import "google/protobuf/timestamp.proto";
+
+// Market — спотовый торговый рынок.
+message Market {
+  string id = 1;
+  string name = 2;
+  string base_asset = 3;
+  string quote_asset = 4;
+  bool enabled = 5;
+  google.protobuf.Timestamp deleted_at = 6;
+  repeated string allowed_roles = 7;
+}
+
+// ViewMarketsRequest — запрос списка рынков с учётом ролей пользователя.
+message ViewMarketsRequest {
+  repeated string user_roles = 1;
+}
+
+// ViewMarketsResponse — список доступных рынков.
+message ViewMarketsResponse {
+  repeated Market markets = 1;
+}
+
+// GetMarketRequest — запрос рынка по идентификатору.
+message GetMarketRequest {
+  string market_id = 1;
+}
+
+// GetMarketResponse — ответ с данными рынка.
+message GetMarketResponse {
+  Market market = 1;
+}
+
+// OrderType — тип ордера.
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  ORDER_TYPE_LIMIT = 1;
+  ORDER_TYPE_MARKET = 2;
+}
+
+// CreateOrderRequest — параметры создания ордера.
+message CreateOrderRequest {
+  string user_id = 1;
+  string market_id = 2;
+  OrderType order_type = 3;
+  string price = 4;
+  string quantity = 5;
+  repeated string user_roles = 6;
+}
+
+// CreateOrderResponse — результат создания ордера.
+message CreateOrderResponse {
+  string order_id = 1;
+  string status = 2;
+}
+
+// GetOrderStatusRequest — запрос статуса ордера.
+message GetOrderStatusRequest {
+  string order_id = 1;
+  string user_id = 2;
+}
+
+// GetOrderStatusResponse — текущее состояние ордера.
+message GetOrderStatusResponse {
+  string order_id = 1;
+  string user_id = 2;
+  string market_id = 3;
+  OrderType order_type = 4;
+  string price = 5;
+  string quantity = 6;
+  string status = 7;
+}
+
+// StreamOrderUpdatesRequest — подписка на обновления статуса ордера.
+message StreamOrderUpdatesRequest {
+  string order_id = 1;
+  string user_id = 2;
+}
+
+// OrderUpdate — событие изменения статуса ордера.
+message OrderUpdate {
+  string order_id = 1;
+  string status = 2;
+}
+
+// SpotInstrumentService — сервис спотовых инструментов и рынков.
+service SpotInstrumentService {
+  rpc ViewMarkets(ViewMarketsRequest) returns (ViewMarketsResponse);
+  rpc GetMarket(GetMarketRequest) returns (GetMarketResponse);
+}
+
+// OrderService — сервис управления ордерами.
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
+  rpc StreamOrderUpdates(StreamOrderUpdatesRequest) returns (stream OrderUpdate);
+}
