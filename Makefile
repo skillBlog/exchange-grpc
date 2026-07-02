@@ -1,8 +1,4 @@
-.PHONY: proto deps build test lint clean
-
-MODULE := github.com/exchange-grpc
-PROTO_DIR := api/proto
-PROTO_FILE := $(PROTO_DIR)/exchange/v1/exchange.proto
+.PHONY: proto deps build build-services test test-integration test-race lint clean
 
 deps:
 	go mod download
@@ -11,50 +7,52 @@ deps:
 
 proto: deps
 	@if command -v buf >/dev/null 2>&1; then \
-		buf generate; \
+		cd proto && buf generate; \
 	else \
-		protoc \
-			--proto_path=$(PROTO_DIR) \
-			--go_out=$(PROTO_DIR) --go_opt=paths=source_relative \
-			--go-grpc_out=$(PROTO_DIR) --go-grpc_opt=paths=source_relative \
-			$(PROTO_FILE); \
+		cd proto && bash scripts/generate-proto.sh; \
 	fi
 
-build:
-	go build ./...
+build: build-services
 
-run-spot:
-	go run ./cmd/spot-instrument-service
+build-services:
+	go build ./userservice/...
+	go build ./spotservice/...
+	go build ./orderservice/...
+	go build ./orderserviceclient/...
 
-run-order:
-	go run ./cmd/order-service
+run-user:
+	go run ./userservice
+
+run-spot-service:
+	go run ./spotservice
+
+run-order-service:
+	go run ./orderservice
 
 run-client:
-	go run ./cmd/client --user-id=user-1 --market-id=BTC-USDT --order-type=limit --price=42000 --quantity=0.01
+	go run ./orderserviceclient --register --email=user@example.com --password=password123 --market-id=BTC-USDT --order-side=buy --quantity=0.01
+
+run-client-service: run-client
+
+compose-up:
+	cd infrastructure/compose && docker compose up -d --build
+
+compose-down:
+	cd infrastructure/compose && docker compose down
 
 test:
-	go test ./...
+	go test ./userservice/... ./spotservice/... ./orderservice/... ./orderserviceclient/... ./shared/... ./proto/...
+	go test ./test/integration/...
 
 test-integration:
 	go test ./test/integration/... -v
 
 test-race:
-	go test -race ./...
+	go test -race ./userservice/... ./spotservice/... ./orderservice/... ./orderserviceclient/... ./shared/...
+	go test -race ./test/integration/...
 
 lint:
-	go vet ./...
-
-compose-build:
-	cd deployments && docker compose build
-
-compose-up:
-	cd deployments && docker compose up -d --build
-
-compose-down:
-	cd deployments && docker compose down
-
-compose-logs:
-	cd deployments && docker compose logs -f
+	go vet ./userservice/... ./spotservice/... ./orderservice/... ./orderserviceclient/... ./shared/... ./test/integration/...
 
 clean:
-	go clean ./...
+	go clean -cache

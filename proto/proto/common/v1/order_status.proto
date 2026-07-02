@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
+
+// OrderStatus — состояние ордера в жизненном цикле.
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_CREATED = 1;
+  ORDER_STATUS_FILLED = 2;
+  ORDER_STATUS_REJECTED = 3;
+  ORDER_STATUS_FAILED = 4;
+  ORDER_STATUS_CANCELLED = 5;
+}

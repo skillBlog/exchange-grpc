@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package order.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/order/v1;orderv1";
+
+import "common/v1/decimal.proto";
+import "common/v1/money.proto";
+import "common/v1/order_side.proto";
+import "common/v1/order_status.proto";
+import "common/v1/uuid.proto";
+
+// OrderService — сервис управления ордерами.
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
+  rpc StreamOrderUpdates(StreamOrderUpdatesRequest) returns (stream OrderUpdate);
+}
+
+// CreateOrderRequest — параметры создания market-ордера.
+// user_id и роли извлекаются на сервере из JWT/metadata.
+message CreateOrderRequest {
+  string market_id = 1;
+  common.v1.OrderSide side = 2;
+  common.v1.Money price = 3;
+  common.v1.Decimal quantity = 4;
+  string idempotency_key = 5;
+}
+
+// CreateOrderResponse — результат создания ордера.
+message CreateOrderResponse {
+  common.v1.Uuid order_id = 1;
+  common.v1.OrderStatus status = 2;
+}
+
+// GetOrderStatusRequest — запрос статуса ордера.
+message GetOrderStatusRequest {
+  common.v1.Uuid order_id = 1;
+}
+
+// GetOrderStatusResponse — текущее состояние ордера.
+message GetOrderStatusResponse {
+  common.v1.Uuid order_id = 1;
+  common.v1.Uuid user_id = 2;
+  string market_id = 3;
+  common.v1.OrderSide side = 4;
+  common.v1.Money price = 5;
+  common.v1.Decimal quantity = 6;
+  common.v1.OrderStatus status = 7;
+}
+
+// StreamOrderUpdatesRequest — подписка на обновления статуса ордера.
+message StreamOrderUpdatesRequest {
+  common.v1.Uuid order_id = 1;
+}
+
+// OrderUpdate — событие изменения статуса ордера.
+message OrderUpdate {
+  common.v1.Uuid order_id = 1;
+  common.v1.OrderStatus status = 2;
+}

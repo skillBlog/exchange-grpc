@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
+
+// Uuid — универсальный идентификатор.
+message Uuid {
+  string value = 1;
+}

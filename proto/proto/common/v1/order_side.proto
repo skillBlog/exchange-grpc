@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
+
+// OrderSide — направление сделки.
+enum OrderSide {
+  ORDER_SIDE_UNSPECIFIED = 0;
+  ORDER_SIDE_BUY = 1;
+  ORDER_SIDE_SELL = 2;
+}

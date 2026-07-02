@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/user/v1;userv1";
+
+// UserService — аутентификация и управление пользователями (этап 3).
+service UserService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RegisterResponse {
+  string user_id = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+}

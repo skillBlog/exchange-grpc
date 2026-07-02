@@ -6,19 +6,21 @@ import (
 	"testing"
 	"time"
 
-	exchangev1 "github.com/exchange-grpc/api/proto/exchange/v1"
+	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
+	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
+	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
 	"github.com/exchange-grpc/test/integration"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 func TestViewMarkets_FiltersByUserRoles(t *testing.T) {
-	suite := integration.NewSuite(t, false)
+	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
 	defer cancel()
 
-	resp, err := suite.SpotClient.ViewMarkets(ctx, &exchangev1.ViewMarketsRequest{})
+	resp, err := suite.SpotClient.ViewMarkets(ctx, &spotv1.ViewMarketsRequest{})
 	if err != nil {
 		t.Fatalf("ViewMarkets() error = %v", err)
 	}
@@ -37,32 +39,32 @@ func TestViewMarkets_FiltersByUserRoles(t *testing.T) {
 }
 
 func TestCreateOrder_RejectsForbiddenMarket(t *testing.T) {
-	suite := integration.NewSuite(t, false)
+	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
 	defer cancel()
 
-	_, err := suite.OrderClient.CreateOrder(ctx, &exchangev1.CreateOrderRequest{
-		UserId:    "user-1",
-		MarketId:  "BNB-USDT",
-		OrderType: exchangev1.OrderType_ORDER_TYPE_MARKET,
-		Quantity:  "1",
+	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "BNB-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Quantity: &commonv1.Decimal{Value: "1"},
 	})
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("status = %v, want PermissionDenied", status.Code(err))
 	}
 
-	resp, err := suite.OrderClient.CreateOrder(ctx, &exchangev1.CreateOrderRequest{
-		UserId:    "user-1",
-		MarketId:  "BNB-USDT",
-		OrderType: exchangev1.OrderType_ORDER_TYPE_MARKET,
-		Quantity:  "1",
-		UserRoles: []string{"trader"},
+	ctxTrader, cancelTrader := context.WithTimeout(integration.AuthContext(context.Background(), "user-1", "trader"), 3*time.Second)
+	defer cancelTrader()
+
+	resp, err := suite.OrderClient.CreateOrder(ctxTrader, &orderv1.CreateOrderRequest{
+		MarketId: "BNB-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Quantity: &commonv1.Decimal{Value: "1"},
 	})
 	if err != nil {
 		t.Fatalf("CreateOrder(trader) error = %v", err)
 	}
-	if resp.GetOrderId() == "" || resp.GetStatus() != "created" {
+	if resp.GetOrderId().GetValue() == "" || resp.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_CREATED {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }

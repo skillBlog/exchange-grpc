@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
+
+// Pagination — параметры постраничной выборки.
+message Pagination {
+  int32 page = 1;
+  int32 page_size = 2;
+}

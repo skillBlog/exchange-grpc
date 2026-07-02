@@ -1,0 +1,11 @@
+go 1.25.0
+
+use (
+	.
+	./orderservice
+	./orderserviceclient
+	./proto
+	./shared
+	./spotservice
+	./userservice
+)

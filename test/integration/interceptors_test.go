@@ -5,74 +5,56 @@ import (
 	"testing"
 	"time"
 
-	exchangev1 "github.com/exchange-grpc/api/proto/exchange/v1"
-	"github.com/exchange-grpc/internal/platform/interceptor"
+	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
+	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
+	ordertestserver "github.com/exchange-grpc/orderservice/pkg/testserver"
 	"github.com/exchange-grpc/test/integration"
 )
 
-func TestRequestID_AppearsInServerLogs(t *testing.T) {
-	suite := integration.NewSuite(t, true)
-	if suite.Logs == nil {
-		t.Fatal("expected log observer")
-	}
+func TestStreamOrderUpdates_receivesMultipleUpdates(t *testing.T) {
+	suite := integration.NewSuite(t)
 
-	const requestID = "integration-req-001"
-	ctx, cancel := context.WithTimeout(
-		interceptor.ContextWithRequestID(context.Background(), requestID),
-		3*time.Second,
-	)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 5*time.Second)
 	defer cancel()
 
-	_, err := suite.SpotClient.ViewMarkets(ctx, &exchangev1.ViewMarketsRequest{})
-	if err != nil {
-		t.Fatalf("ViewMarkets() error = %v", err)
-	}
-
-	entries := suite.Logs.All()
-	if len(entries) == 0 {
-		t.Fatal("expected server log entries")
-	}
-
-	found := false
-	for _, entry := range entries {
-		if entry.ContextMap()["request_id"] == requestID {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("request_id %q not found in logs: %+v", requestID, entries)
-	}
-}
-
-func TestRequestID_PropagatesToOrderServiceLogs(t *testing.T) {
-	suite := integration.NewSuite(t, true)
-
-	const requestID = "integration-req-002"
-	ctx, cancel := context.WithTimeout(
-		interceptor.ContextWithRequestID(context.Background(), requestID),
-		3*time.Second,
-	)
-	defer cancel()
-
-	_, err := suite.OrderClient.CreateOrder(ctx, &exchangev1.CreateOrderRequest{
-		UserId:    "user-1",
-		MarketId:  "ETH-USDT",
-		OrderType: exchangev1.OrderType_ORDER_TYPE_MARKET,
-		Quantity:  "1",
+	created, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "ETH-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Quantity: &commonv1.Decimal{Value: "1"},
 	})
 	if err != nil {
 		t.Fatalf("CreateOrder() error = %v", err)
 	}
 
-	found := false
-	for _, entry := range suite.Logs.All() {
-		if entry.ContextMap()["request_id"] == requestID {
-			found = true
-			break
-		}
+	stream, err := suite.OrderClient.StreamOrderUpdates(ctx, &orderv1.StreamOrderUpdatesRequest{
+		OrderId: created.GetOrderId(),
+	})
+	if err != nil {
+		t.Fatalf("StreamOrderUpdates() error = %v", err)
 	}
-	if !found {
-		t.Fatal("request_id not found in order service logs")
+
+	first, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("first Recv() error = %v", err)
+	}
+	if first.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_CREATED {
+		t.Fatalf("first status = %v", first.GetStatus())
+	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		_ = ordertestserver.UpdateOrderStatus(context.Background(), suite.OrderServices, ordertestserver.UpdateOrderStatusInput{
+			OrderID: created.GetOrderId().GetValue(),
+			UserID:  "user-1",
+			Status:  ordertestserver.OrderStatusFilled,
+		})
+	}()
+
+	second, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("second Recv() error = %v", err)
+	}
+	if second.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_FILLED {
+		t.Fatalf("second status = %v, want filled", second.GetStatus())
 	}
 }

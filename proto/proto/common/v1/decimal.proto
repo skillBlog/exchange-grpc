@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
+
+// Decimal — десятичное значение (количество актива).
+message Decimal {
+  string value = 1;
+}

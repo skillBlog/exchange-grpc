@@ -6,19 +6,17 @@ import (
 	"testing"
 	"time"
 
-	exchangev1 "github.com/exchange-grpc/api/proto/exchange/v1"
+	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
 	"github.com/exchange-grpc/test/integration"
 )
 
 func TestViewMarkets_ReturnsOnlyActiveMarkets(t *testing.T) {
-	suite := integration.NewSuite(t, false)
+	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1", "trader"), 3*time.Second)
 	defer cancel()
 
-	resp, err := suite.SpotClient.ViewMarkets(ctx, &exchangev1.ViewMarketsRequest{
-		UserRoles: []string{"trader"},
-	})
+	resp, err := suite.SpotClient.ViewMarkets(ctx, &spotv1.ViewMarketsRequest{})
 	if err != nil {
 		t.Fatalf("ViewMarkets() error = %v", err)
 	}

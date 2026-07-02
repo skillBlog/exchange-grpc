@@ -1,6 +1,19 @@
 # exchange-grpc
 
-Учебный проект биржевой системы на gRPC: **OrderService** и **SpotInstrumentService**.
+Учебный проект биржевой системы на gRPC — монорепо из 4 микросервисов.
+
+## Структура
+
+```
+proto/                  — .proto контракты + generated pb/
+shared/                 — logger, JWT, gRPC interceptors
+userservice/            — Register, Login, JWT (:50050)
+spotservice/            — ViewMarkets, GetMarket (:50051)
+orderservice/           — CreateOrder, StreamOrderUpdates (:50052)
+orderserviceclient/     — CLI-клиент
+infrastructure/compose/ — docker-compose
+test/integration/       — интеграционные тесты
+```
 
 ## Требования
 
@@ -10,153 +23,79 @@
 ## Быстрый старт
 
 ```bash
-# Установить плагины и сгенерировать Go-код из .proto
 make proto
-# Windows PowerShell:
-# .\scripts\generate-proto.ps1
+make build-services
 
-# Сборка
-make build
+# в отдельных терминалах:
+make run-user
+make run-spot-service
+make run-order-service
+
+# создать заказ:
+make run-client
+```
+
+Docker:
+
+```bash
+make compose-up
 ```
 
 ## Конфигурация
 
-Переменные окружения (значения по умолчанию):
+| Переменная | По умолчанию | Сервис | Описание |
+|------------|--------------|--------|----------|
+| `USER_SERVICE_ADDR` | `:50050` | userservice | gRPC listen |
+| `USER_SERVICE_HOST` | `localhost:50050` | client | Адрес userservice |
+| `SPOT_SERVICE_ADDR` | `:50051` | spotservice | gRPC listen |
+| `SPOT_SERVICE_HOST` | `localhost:50051` | orderservice, client | Адрес spotservice |
+| `ORDER_SERVICE_ADDR` | `:50052` | orderservice | gRPC listen |
+| `ORDER_SERVICE_HOST` | `localhost:50052` | client | Адрес orderservice |
+| `JWT_SECRET` | `dev-exchange-secret` | все | Общий секрет подписи JWT |
+| `JWT_TTL` | `24h` | userservice | Время жизни access token |
+| `SPOT_GRPC_TIMEOUT` | `5s` | orderservice | Таймаут вызовов к spot |
+| `ORDER_HUB_BUFFER_SIZE` | `256` | orderservice | Буфер hub обновлений |
 
-| Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `SPOT_INSTRUMENT_ADDR` | `:50051` | Адрес SpotInstrumentService |
-| `ORDER_ADDR` | `:50052` | Адрес OrderService |
-| `ORDER_HOST` | `localhost:50052` | Адрес OrderService для CLI-клиента |
-| `SPOT_METRICS_ADDR` | `:9090` | Prometheus metrics SpotInstrumentService |
-| `ORDER_METRICS_ADDR` | `:9091` | Prometheus metrics OrderService |
-| `SPOT_INSTRUMENT_HOST` | `localhost:50051` | Адрес SpotInstrument для OrderService client |
-| `REDIS_ADDR` | _(пусто)_ | Redis для кэша ViewMarkets (например `localhost:6379`) |
-| `REDIS_CACHE_TTL` | `30s` | TTL кэша ViewMarkets |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(пусто)_ | OTLP endpoint Jaeger (`http://localhost:4318`) |
+## Безопасность (JWT)
 
-## Docker Compose (полный стек)
+`user_id` и роли **не в теле запроса** — только через Bearer JWT (`Authorization` metadata). Токен выпускает `userservice` при Login. Order → Spot пробрасывает JWT автоматически.
 
-Поднимает **Redis**, SpotInstrumentService, OrderService и Prometheus в одной сети.
+## RBAC
 
-```bash
-make compose-up
-make compose-logs   # опционально
-```
-
-| Сервис | gRPC | Metrics | Описание |
-|--------|------|---------|----------|
-| spot-instrument | localhost:50051 | localhost:9090/metrics | Рынки (+ Redis cache) |
-| redis | localhost:6379 | — | Кэш ViewMarkets |
-| jaeger | — | http://localhost:16686 | UI трассировки |
-| order-service | localhost:50052 | localhost:9091/metrics | Заказы |
-| prometheus | — | http://localhost:9092 | UI и scrape |
-
-Проверка после старта:
-
-```bash
-go run ./cmd/client \
-  --addr=localhost:50052 \
-  --user-id=user-1 \
-  --market-id=BTC-USDT \
-  --order-type=limit \
-  --price=42000 \
-  --quantity=0.01
-```
-
-Остановка:
-
-```bash
-make compose-down
-```
-
-## Jaeger tracing
-
-При заданном `OTEL_EXPORTER_OTLP_ENDPOINT` сервисы экспортируют trace через OTLP.
-`x-request-id` добавляется в span как атрибут `request_id`, а W3C trace context
-пробрасывается между OrderService и SpotInstrumentService.
-
-```bash
-# Docker Compose поднимает Jaeger автоматически
-make compose-up
-
-# Локально
-docker run -d --name jaeger -p 16686:16686 -p 4318:4318 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:1.62.0
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 make run-spot
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 make run-order
-```
-
-UI: http://localhost:16686 — ищите trace `order-service` → `spot-instrument-service`.
-
-## RBAC (user_roles)
-
-Рынки с пустым `allowed_roles` доступны всем. Ограниченные рынки (seed: `BNB-USDT` → `trader`, `admin`) видны и доступны для торговли только при совпадении роли.
-
-| RPC | Поле | Поведение |
-|-----|------|-----------|
-| `ViewMarkets` | `user_roles` | Возвращает только активные рынки, доступные пользователю |
-| `CreateOrder` | `user_roles` | `PermissionDenied`, если роль не подходит для `market_id` |
-
-```bash
-# BNB-USDT требует роль trader или admin
-go run ./cmd/client \
-  --user-id=user-1 \
-  --market-id=BNB-USDT \
-  --order-type=market \
-  --quantity=1 \
-  --user-roles=trader
-```
-
-## Prometheus (только контейнер)
-
-Если сервисы запущены локально на хосте, можно поднять только Prometheus — для этого в `deployments/prometheus/prometheus.yml` замените targets на `host.docker.internal:9090` и `:9091`.
-
-```bash
-cd deployments
-docker compose up -d prometheus
-```
-
-UI Prometheus: http://localhost:9092
+Роли в JWT claims (`roles`). Рынки с пустым `allowed_roles` доступны всем. Seed `BNB-USDT` требует `trader` или `admin`.
 
 ## CLI-клиент
 
 ```bash
-# Сначала запустите spot-instrument-service и order-service
-go run ./cmd/client \
-  --user-id=user-1 \
+go run ./orderserviceclient \
+  --register \
+  --email=user@example.com \
+  --password=password123 \
   --market-id=BTC-USDT \
-  --order-type=limit \
+  --order-side=buy \
   --price=42000 \
   --quantity=0.01
 ```
 
-Флаги: `--user-id`, `--market-id`, `--order-type` (`limit`|`market`), `--price`, `--quantity`, `--addr`, `--request-id`, `--user-roles` (через запятую).
+Флаги: `--email`, `--password`, `--register`, `--market-id`, `--order-side` (`buy`|`sell`), `--price`, `--quantity`, `--addr`, `--user-addr`, `--request-id`.
 
 ## API
 
-Proto-контракт: [`api/proto/exchange/v1/exchange.proto`](api/proto/exchange/v1/exchange.proto)
+Proto-контракты: [`proto/proto/`](proto/proto/)
 
 | Сервис | RPC | Описание |
 |--------|-----|----------|
-| SpotInstrumentService | `ViewMarkets` | Список активных рынков |
-| SpotInstrumentService | `GetMarket` | Рынок по ID (в т.ч. неактивный) |
+| UserService | `Register` | Регистрация |
+| UserService | `Login` | Вход, выпуск JWT |
+| SpotService | `ViewMarkets` | Список активных рынков |
+| SpotService | `GetMarket` | Рынок по ID |
 | OrderService | `CreateOrder` | Создание заказа |
 | OrderService | `GetOrderStatus` | Статус заказа |
-| OrderService | `StreamOrderUpdates` | Server-stream обновлений статуса |
+| OrderService | `StreamOrderUpdates` | Server-stream обновлений |
 
-## Структура проекта
-
-```
-api/proto/          — protobuf контракты и generated code
-cmd/                — точки входа (сервисы, клиент)
-internal/domain/    — доменные сущности
-internal/usecase/   — бизнес-логика
-internal/adapter/   — gRPC, репозитории, клиенты
-internal/platform/  — config, logger, interceptors, metrics
-deployments/        — Docker, Prometheus
-test/integration/   — интеграционные тесты
-```
+## Тесты
 
 ```bash
+make test
 make test-integration
 ```

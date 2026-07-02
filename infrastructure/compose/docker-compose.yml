@@ -1,0 +1,49 @@
+services:
+  userservice:
+    build:
+      context: ../..
+      dockerfile: userservice/Dockerfile
+    container_name: exchange-userservice
+    ports:
+      - "50050:50050"
+    environment:
+      USER_SERVICE_ADDR: ":50050"
+      JWT_SECRET: "dev-exchange-secret"
+    networks:
+      - exchange
+
+  spotservice:
+    build:
+      context: ../..
+      dockerfile: spotservice/Dockerfile
+    container_name: exchange-spotservice
+    ports:
+      - "50051:50051"
+    environment:
+      SPOT_SERVICE_ADDR: ":50051"
+      JWT_SECRET: "dev-exchange-secret"
+    networks:
+      - exchange
+
+  orderservice:
+    build:
+      context: ../..
+      dockerfile: orderservice/Dockerfile
+    container_name: exchange-orderservice
+    ports:
+      - "50052:50052"
+    environment:
+      ORDER_SERVICE_ADDR: ":50052"
+      SPOT_SERVICE_HOST: "spotservice:50051"
+      JWT_SECRET: "dev-exchange-secret"
+      SPOT_GRPC_TIMEOUT: "5s"
+      ORDER_HUB_BUFFER_SIZE: "256"
+    depends_on:
+      - spotservice
+      - userservice
+    networks:
+      - exchange
+
+networks:
+  exchange:
+    driver: bridge

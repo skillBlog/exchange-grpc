@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
+
+// Money — денежная сумма с валютой.
+message Money {
+  string amount = 1;
+  string currency = 2;
+}
