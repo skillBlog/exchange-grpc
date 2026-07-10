@@ -4,6 +4,7 @@ package spot.v1;
 
 option go_package = "github.com/exchange-grpc/proto/pb/spot/v1;spotv1";
 
+import "buf/validate/validate.proto";
 import "common/v1/market.proto";
 import "common/v1/pagination.proto";
 
@@ -16,21 +17,18 @@ service SpotService {
 // ViewMarketsRequest — запрос списка рынков.
 // Роли пользователя извлекаются на сервере из JWT/metadata.
 message ViewMarketsRequest {
-  common.v1.Pagination pagination = 1;
+  common.v1.CursorPagination pagination = 1;
 }
 
-// ViewMarketsResponse — список доступных рынков.
 message ViewMarketsResponse {
   repeated common.v1.Market markets = 1;
-  int32 total = 2;
+  common.v1.CursorPageInfo page_info = 2;
 }
 
-// GetMarketRequest — запрос рынка по идентификатору.
 message GetMarketRequest {
-  string market_id = 1;
+  string market_id = 1 [(buf.validate.field).string.min_len = 1];
 }
 
-// GetMarketResponse — ответ с данными рынка.
 message GetMarketResponse {
   common.v1.Market market = 1;
 }

@@ -5,14 +5,16 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/userservice/internal/application"
 	"github.com/exchange-grpc/userservice/internal/domain"
+	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/memory"
 )
 
 func TestRegister_success(t *testing.T) {
 	repo := memory.NewUserRepository()
-	uc := application.NewRegister(repo)
+	uc := application.NewRegister(repo, bcrypt.NewHasher())
 
 	out, err := uc.Execute(context.Background(), application.RegisterInput{
 		Email:    "user@example.com",
@@ -25,15 +27,18 @@ func TestRegister_success(t *testing.T) {
 		t.Fatal("expected user id")
 	}
 
-	_, err = repo.GetByEmail(context.Background(), "user@example.com")
+	user, err := repo.GetByEmail(context.Background(), "user@example.com")
 	if err != nil {
 		t.Fatalf("GetByEmail() error = %v", err)
+	}
+	if len(user.Roles) != 1 || user.Roles[0] != roles.RoleUser {
+		t.Fatalf("roles = %v, want [user]", user.Roles)
 	}
 }
 
 func TestRegister_duplicateEmail(t *testing.T) {
 	repo := memory.NewUserRepository()
-	uc := application.NewRegister(repo)
+	uc := application.NewRegister(repo, bcrypt.NewHasher())
 
 	input := application.RegisterInput{
 		Email:    "dup@example.com",
@@ -50,11 +55,23 @@ func TestRegister_duplicateEmail(t *testing.T) {
 }
 
 func TestRegister_shortPassword(t *testing.T) {
-	uc := application.NewRegister(memory.NewUserRepository())
+	uc := application.NewRegister(memory.NewUserRepository(), bcrypt.NewHasher())
 
 	_, err := uc.Execute(context.Background(), application.RegisterInput{
 		Email:    "user@example.com",
 		Password: "short",
+	})
+	if !errors.Is(err, domain.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestRegister_weakPassword(t *testing.T) {
+	uc := application.NewRegister(memory.NewUserRepository(), bcrypt.NewHasher())
+
+	_, err := uc.Execute(context.Background(), application.RegisterInput{
+		Email:    "user@example.com",
+		Password: "12345678",
 	})
 	if !errors.Is(err, domain.ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)

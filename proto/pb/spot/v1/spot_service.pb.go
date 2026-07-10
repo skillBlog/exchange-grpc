@@ -7,6 +7,7 @@
 package spotv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	v1 "github.com/exchange-grpc/proto/pb/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -26,7 +27,7 @@ const (
 // Роли пользователя извлекаются на сервере из JWT/metadata.
 type ViewMarketsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pagination    *v1.Pagination         `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Pagination    *v1.CursorPagination   `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -61,18 +62,17 @@ func (*ViewMarketsRequest) Descriptor() ([]byte, []int) {
 	return file_spot_v1_spot_service_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ViewMarketsRequest) GetPagination() *v1.Pagination {
+func (x *ViewMarketsRequest) GetPagination() *v1.CursorPagination {
 	if x != nil {
 		return x.Pagination
 	}
 	return nil
 }
 
-// ViewMarketsResponse — список доступных рынков.
 type ViewMarketsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Markets       []*v1.Market           `protobuf:"bytes,1,rep,name=markets,proto3" json:"markets,omitempty"`
-	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	PageInfo      *v1.CursorPageInfo     `protobuf:"bytes,2,opt,name=page_info,json=pageInfo,proto3" json:"page_info,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -114,14 +114,13 @@ func (x *ViewMarketsResponse) GetMarkets() []*v1.Market {
 	return nil
 }
 
-func (x *ViewMarketsResponse) GetTotal() int32 {
+func (x *ViewMarketsResponse) GetPageInfo() *v1.CursorPageInfo {
 	if x != nil {
-		return x.Total
+		return x.PageInfo
 	}
-	return 0
+	return nil
 }
 
-// GetMarketRequest — запрос рынка по идентификатору.
 type GetMarketRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MarketId      string                 `protobuf:"bytes,1,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"`
@@ -166,7 +165,6 @@ func (x *GetMarketRequest) GetMarketId() string {
 	return ""
 }
 
-// GetMarketResponse — ответ с данными рынка.
 type GetMarketResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Market        *v1.Market             `protobuf:"bytes,1,opt,name=market,proto3" json:"market,omitempty"`
@@ -215,16 +213,16 @@ var File_spot_v1_spot_service_proto protoreflect.FileDescriptor
 
 const file_spot_v1_spot_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1aspot/v1/spot_service.proto\x12\aspot.v1\x1a\x16common/v1/market.proto\x1a\x1acommon/v1/pagination.proto\"K\n" +
-	"\x12ViewMarketsRequest\x125\n" +
+	"\x1aspot/v1/spot_service.proto\x12\aspot.v1\x1a\x1bbuf/validate/validate.proto\x1a\x16common/v1/market.proto\x1a\x1acommon/v1/pagination.proto\"Q\n" +
+	"\x12ViewMarketsRequest\x12;\n" +
 	"\n" +
-	"pagination\x18\x01 \x01(\v2\x15.common.v1.PaginationR\n" +
-	"pagination\"X\n" +
+	"pagination\x18\x01 \x01(\v2\x1b.common.v1.CursorPaginationR\n" +
+	"pagination\"z\n" +
 	"\x13ViewMarketsResponse\x12+\n" +
-	"\amarkets\x18\x01 \x03(\v2\x11.common.v1.MarketR\amarkets\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\"/\n" +
-	"\x10GetMarketRequest\x12\x1b\n" +
-	"\tmarket_id\x18\x01 \x01(\tR\bmarketId\">\n" +
+	"\amarkets\x18\x01 \x03(\v2\x11.common.v1.MarketR\amarkets\x126\n" +
+	"\tpage_info\x18\x02 \x01(\v2\x19.common.v1.CursorPageInfoR\bpageInfo\"8\n" +
+	"\x10GetMarketRequest\x12$\n" +
+	"\tmarket_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bmarketId\">\n" +
 	"\x11GetMarketResponse\x12)\n" +
 	"\x06market\x18\x01 \x01(\v2\x11.common.v1.MarketR\x06market2\x9b\x01\n" +
 	"\vSpotService\x12H\n" +
@@ -249,22 +247,24 @@ var file_spot_v1_spot_service_proto_goTypes = []any{
 	(*ViewMarketsResponse)(nil), // 1: spot.v1.ViewMarketsResponse
 	(*GetMarketRequest)(nil),    // 2: spot.v1.GetMarketRequest
 	(*GetMarketResponse)(nil),   // 3: spot.v1.GetMarketResponse
-	(*v1.Pagination)(nil),       // 4: common.v1.Pagination
+	(*v1.CursorPagination)(nil), // 4: common.v1.CursorPagination
 	(*v1.Market)(nil),           // 5: common.v1.Market
+	(*v1.CursorPageInfo)(nil),   // 6: common.v1.CursorPageInfo
 }
 var file_spot_v1_spot_service_proto_depIdxs = []int32{
-	4, // 0: spot.v1.ViewMarketsRequest.pagination:type_name -> common.v1.Pagination
+	4, // 0: spot.v1.ViewMarketsRequest.pagination:type_name -> common.v1.CursorPagination
 	5, // 1: spot.v1.ViewMarketsResponse.markets:type_name -> common.v1.Market
-	5, // 2: spot.v1.GetMarketResponse.market:type_name -> common.v1.Market
-	0, // 3: spot.v1.SpotService.ViewMarkets:input_type -> spot.v1.ViewMarketsRequest
-	2, // 4: spot.v1.SpotService.GetMarket:input_type -> spot.v1.GetMarketRequest
-	1, // 5: spot.v1.SpotService.ViewMarkets:output_type -> spot.v1.ViewMarketsResponse
-	3, // 6: spot.v1.SpotService.GetMarket:output_type -> spot.v1.GetMarketResponse
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	6, // 2: spot.v1.ViewMarketsResponse.page_info:type_name -> common.v1.CursorPageInfo
+	5, // 3: spot.v1.GetMarketResponse.market:type_name -> common.v1.Market
+	0, // 4: spot.v1.SpotService.ViewMarkets:input_type -> spot.v1.ViewMarketsRequest
+	2, // 5: spot.v1.SpotService.GetMarket:input_type -> spot.v1.GetMarketRequest
+	1, // 6: spot.v1.SpotService.ViewMarkets:output_type -> spot.v1.ViewMarketsResponse
+	3, // 7: spot.v1.SpotService.GetMarket:output_type -> spot.v1.GetMarketResponse
+	6, // [6:8] is the sub-list for method output_type
+	4, // [4:6] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_spot_v1_spot_service_proto_init() }

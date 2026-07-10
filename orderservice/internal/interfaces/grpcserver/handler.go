@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 
-	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/shared/grpc"
 )
 
 // Server реализует order.v1.OrderService.
 type Server struct {
 	orderv1.UnimplementedOrderServiceServer
+	mapper             Mapper
 	createOrder        *application.CreateOrder
 	getOrderStatus     *application.GetOrderStatus
+	listOrders         *application.ListOrders
 	streamOrderUpdates *application.StreamOrderUpdates
 }
 
@@ -23,6 +25,7 @@ func NewServer(services Services) *Server {
 	return &Server{
 		createOrder:        services.CreateOrder,
 		getOrderStatus:     services.GetOrderStatus,
+		listOrders:         services.ListOrders,
 		streamOrderUpdates: services.StreamOrderUpdates,
 	}
 }
@@ -34,19 +37,12 @@ func (s *Server) CreateOrder(ctx context.Context, req *orderv1.CreateOrderReques
 		return nil, grpc.ErrMissingUserID()
 	}
 
-	side, err := orderSideToDomain(req.GetSide())
+	input, err := s.mapper.CreateOrderRequestToInput(req, userID, grpc.RolesFromContext(ctx))
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
-	out, err := s.createOrder.Execute(ctx, application.CreateOrderInput{
-		UserID:    userID,
-		MarketID:  req.GetMarketId(),
-		Side:      side,
-		Price:     moneyToString(req.GetPrice()),
-		Quantity:  decimalToString(req.GetQuantity()),
-		UserRoles: grpc.RolesFromContext(ctx),
-	})
+	out, err := s.createOrder.Execute(ctx, input)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -75,6 +71,20 @@ func (s *Server) GetOrderStatus(ctx context.Context, req *orderv1.GetOrderStatus
 	return orderToGetOrderStatusResponse(order), nil
 }
 
+// ListOrders возвращает список ордеров текущего пользователя.
+func (s *Server) ListOrders(ctx context.Context, req *orderv1.ListOrdersRequest) (*orderv1.ListOrdersResponse, error) {
+	userID, ok := grpc.UserIDFromContext(ctx)
+	if !ok {
+		return nil, grpc.ErrMissingUserID()
+	}
+
+	out, err := s.listOrders.Execute(ctx, s.mapper.ListOrdersRequestToInput(req, userID))
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return s.mapper.ListOrdersOutputToResponse(out), nil
+}
+
 // StreamOrderUpdates передаёт текущий и последующие статусы ордера.
 func (s *Server) StreamOrderUpdates(req *orderv1.StreamOrderUpdatesRequest, stream orderv1.OrderService_StreamOrderUpdatesServer) error {
 	userID, ok := grpc.UserIDFromContext(stream.Context())
@@ -91,7 +101,7 @@ func (s *Server) StreamOrderUpdates(req *orderv1.StreamOrderUpdatesRequest, stre
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrInvalidArgument) {
+	if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrInvalidArgument) || errors.Is(err, domain.ErrForbidden) {
 		return toGRPCError(err)
 	}
 	return err

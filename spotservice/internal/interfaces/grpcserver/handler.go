@@ -11,6 +11,7 @@ import (
 // Server реализует spot.v1.SpotService.
 type Server struct {
 	spotv1.UnimplementedSpotServiceServer
+	mapper      Mapper
 	viewMarkets *application.ViewMarkets
 	getMarket   *application.GetMarket
 }
@@ -25,25 +26,12 @@ func NewServer(viewMarkets *application.ViewMarkets, getMarket *application.GetM
 
 // ViewMarkets возвращает активные спотовые рынки, доступные вызывающей стороне.
 func (s *Server) ViewMarkets(ctx context.Context, req *spotv1.ViewMarketsRequest) (*spotv1.ViewMarketsResponse, error) {
-	var page, pageSize int32
-	if pagination := req.GetPagination(); pagination != nil {
-		page = pagination.GetPage()
-		pageSize = pagination.GetPageSize()
-	}
-
-	markets, total, err := s.viewMarkets.Execute(ctx, application.ViewMarketsInput{
-		UserRoles: grpc.RolesFromContext(ctx),
-		Page:      page,
-		PageSize:  pageSize,
-	})
+	userID, _ := grpc.UserIDFromContext(ctx)
+	out, err := s.viewMarkets.Execute(ctx, s.mapper.ViewMarketsRequestToInput(req, userID, grpc.RolesFromContext(ctx)))
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
-
-	return &spotv1.ViewMarketsResponse{
-		Markets: marketsToProto(markets),
-		Total:   total,
-	}, nil
+	return s.mapper.ViewMarketsOutputToResponse(out), nil
 }
 
 // GetMarket возвращает рынок по идентификатору.
@@ -52,8 +40,5 @@ func (s *Server) GetMarket(ctx context.Context, req *spotv1.GetMarketRequest) (*
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
-
-	return &spotv1.GetMarketResponse{
-		Market: marketToProto(market),
-	}, nil
+	return s.mapper.GetMarketOutputToResponse(market), nil
 }

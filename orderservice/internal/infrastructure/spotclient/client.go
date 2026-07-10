@@ -65,7 +65,7 @@ func (c *Client) EnsureMarketAvailable(ctx context.Context, marketID string, use
 	if market == nil {
 		return fmt.Errorf("%w: market %q", domain.ErrNotFound, marketID)
 	}
-	if !market.GetEnabled() || market.GetDeletedAt() != nil {
+	if !market.GetEnabled() {
 		return fmt.Errorf("%w: market %q", domain.ErrMarketInactive, marketID)
 	}
 

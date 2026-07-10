@@ -7,6 +7,7 @@
 package commonv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -21,7 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Money — денежная сумма с валютой.
+// Money — денежная сумма в USD.
 type Money struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Amount        string                 `protobuf:"bytes,1,opt,name=amount,proto3" json:"amount,omitempty"`
@@ -78,10 +79,12 @@ var File_common_v1_money_proto protoreflect.FileDescriptor
 
 const file_common_v1_money_proto_rawDesc = "" +
 	"\n" +
-	"\x15common/v1/money.proto\x12\tcommon.v1\";\n" +
-	"\x05Money\x12\x16\n" +
-	"\x06amount\x18\x01 \x01(\tR\x06amount\x12\x1a\n" +
-	"\bcurrency\x18\x02 \x01(\tR\bcurrencyB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
+	"\x15common/v1/money.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"P\n" +
+	"\x05Money\x12\x1f\n" +
+	"\x06amount\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06amount\x12&\n" +
+	"\bcurrency\x18\x02 \x01(\tB\n" +
+	"\xbaH\ar\x05\n" +
+	"\x03USDR\bcurrencyB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_money_proto_rawDescOnce sync.Once

@@ -23,7 +23,7 @@ func TestViewMarkets_ReturnsOnlyActiveMarkets(t *testing.T) {
 
 	ids := make([]string, 0, len(resp.GetMarkets()))
 	for _, market := range resp.GetMarkets() {
-		if !market.GetEnabled() || market.GetDeletedAt() != nil {
+		if !market.GetEnabled() {
 			t.Fatalf("inactive market in response: %+v", market)
 		}
 		ids = append(ids, market.GetId())

@@ -1,10 +1,12 @@
 package domain
 
-import "errors"
+import sharederrors "github.com/exchange-grpc/shared/errors"
 
 var (
-	ErrNotFound        = errors.New("not found")
-	ErrInvalidArgument = errors.New("invalid argument")
-	ErrMarketInactive  = errors.New("market inactive")
-	ErrForbidden       = errors.New("forbidden")
+	ErrNotFound        = sharederrors.ErrNotFound
+	ErrInvalidArgument = sharederrors.ErrInvalidArgument
+	ErrMarketInactive  = sharederrors.ErrMarketInactive
+	ErrForbidden       = sharederrors.ErrForbidden
+	ErrAlreadyExists   = sharederrors.ErrAlreadyExists
+	ErrRateLimited     = sharederrors.ErrRateLimited
 )

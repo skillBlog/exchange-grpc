@@ -2,38 +2,53 @@ package application
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/exchange-grpc/spotservice/internal/domain"
 )
 
 const (
-	defaultPage     int32 = 1
 	defaultPageSize int32 = 50
 	maxPageSize     int32 = 100
 )
 
 // ViewMarketsInput — параметры для получения списка доступных спотовых рынков.
 type ViewMarketsInput struct {
+	UserID    string
 	UserRoles []string
-	Page      int32
+	PageToken string
 	PageSize  int32
+}
+
+// ViewMarketsOutput — результат курсорной выборки рынков.
+type ViewMarketsOutput struct {
+	Markets       []domain.Market
+	NextPageToken string
+	HasMore       bool
 }
 
 // ViewMarkets возвращает рынки, доступные для торговли в контексте пользователя.
 type ViewMarkets struct {
 	markets domain.MarketRepository
+	limiter ViewMarketsRateLimiter
 }
 
 // NewViewMarkets создаёт use case ViewMarkets.
-func NewViewMarkets(markets domain.MarketRepository) *ViewMarkets {
-	return &ViewMarkets{markets: markets}
+func NewViewMarkets(markets domain.MarketRepository, limiter ViewMarketsRateLimiter) *ViewMarkets {
+	return &ViewMarkets{markets: markets, limiter: limiter}
 }
 
 // Execute возвращает активные рынки, доступные указанным ролям пользователя.
-func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) ([]domain.Market, int32, error) {
+func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (ViewMarketsOutput, error) {
+	if uc.limiter != nil && input.UserID != "" && !uc.limiter.Allow(input.UserID) {
+		return ViewMarketsOutput{}, fmt.Errorf("%w: too many requests", domain.ErrRateLimited)
+	}
+
 	markets, err := uc.markets.ListActive(ctx)
 	if err != nil {
-		return nil, 0, err
+		return ViewMarketsOutput{}, err
 	}
 
 	filtered := make([]domain.Market, 0, len(markets))
@@ -43,10 +58,10 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) ([]d
 		}
 	}
 
-	page := input.Page
-	if page <= 0 {
-		page = defaultPage
-	}
+	slices.SortFunc(filtered, func(a, b domain.Market) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+
 	pageSize := input.PageSize
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
@@ -55,16 +70,35 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) ([]d
 		pageSize = maxPageSize
 	}
 
-	total := int32(len(filtered))
-	start := (page - 1) * pageSize
-	if start >= total {
-		return []domain.Market{}, total, nil
+	start := 0
+	if input.PageToken != "" {
+		idx, found := slices.BinarySearchFunc(filtered, input.PageToken, func(market domain.Market, token string) int {
+			return strings.Compare(market.ID, token)
+		})
+		if found {
+			start = idx + 1
+		} else if idx < len(filtered) {
+			start = idx
+		} else {
+			return ViewMarketsOutput{Markets: []domain.Market{}}, nil
+		}
 	}
 
-	end := start + pageSize
-	if end > total {
-		end = total
+	end := start + int(pageSize)
+	hasMore := end < len(filtered)
+	if end > len(filtered) {
+		end = len(filtered)
 	}
 
-	return filtered[start:end], total, nil
+	page := filtered[start:end]
+	var nextPageToken string
+	if hasMore && len(page) > 0 {
+		nextPageToken = page[len(page)-1].ID
+	}
+
+	return ViewMarketsOutput{
+		Markets:       page,
+		NextPageToken: nextPageToken,
+		HasMore:       hasMore,
+	}, nil
 }

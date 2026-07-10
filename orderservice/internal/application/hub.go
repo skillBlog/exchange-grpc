@@ -4,6 +4,8 @@ import (
 	"sync"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	"github.com/exchange-grpc/shared/logger"
+	"go.uber.org/zap"
 )
 
 const defaultSubscriberBuffer = 256
@@ -19,16 +21,21 @@ type UpdateHub struct {
 	mu               sync.RWMutex
 	subscribers      map[string]map[chan UpdateEvent]struct{}
 	subscriberBuffer int
+	log              *zap.Logger
 }
 
 // NewUpdateHub создаёт in-memory hub обновлений ордеров.
-func NewUpdateHub(subscriberBuffer int) *UpdateHub {
+func NewUpdateHub(subscriberBuffer int, log *zap.Logger) *UpdateHub {
 	if subscriberBuffer <= 0 {
 		subscriberBuffer = defaultSubscriberBuffer
+	}
+	if log == nil {
+		log = logger.NewNop()
 	}
 	return &UpdateHub{
 		subscribers:      make(map[string]map[chan UpdateEvent]struct{}),
 		subscriberBuffer: subscriberBuffer,
+		log:              log,
 	}
 }
 
@@ -47,11 +54,16 @@ func (h *UpdateHub) Publish(orderID string, status domain.OrderStatus) {
 		select {
 		case ch <- event:
 		default:
+			h.log.Warn("order update dropped: subscriber buffer full",
+				zap.String("order_id", orderID),
+				zap.String("status", string(status)),
+			)
 		}
 	}
 }
 
 // Subscribe регистрирует слушателя для конкретного ордера.
+// unsubscribe безопасен при повторных вызовах благодаря sync.Once.
 func (h *UpdateHub) Subscribe(orderID string) (<-chan UpdateEvent, func()) {
 	ch := make(chan UpdateEvent, h.subscriberBuffer)
 
@@ -62,14 +74,18 @@ func (h *UpdateHub) Subscribe(orderID string) (<-chan UpdateEvent, func()) {
 	h.subscribers[orderID][ch] = struct{}{}
 	h.mu.Unlock()
 
+	var once sync.Once
 	unsubscribe := func() {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		delete(h.subscribers[orderID], ch)
-		close(ch)
-		if len(h.subscribers[orderID]) == 0 {
-			delete(h.subscribers, orderID)
-		}
+		once.Do(func() {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+
+			delete(h.subscribers[orderID], ch)
+			if len(h.subscribers[orderID]) == 0 {
+				delete(h.subscribers, orderID)
+			}
+			close(ch)
+		})
 	}
 
 	return ch, unsubscribe

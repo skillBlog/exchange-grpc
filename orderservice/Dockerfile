@@ -20,6 +20,9 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 COPY --from=builder /out/service /app/service
+COPY --from=builder /src/orderservice/migrations /app/migrations
+
+ENV ORDER_MIGRATIONS_DIR=/app/migrations
 
 USER nobody
 ENTRYPOINT ["/app/service"]

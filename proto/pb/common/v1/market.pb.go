@@ -7,9 +7,9 @@
 package commonv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -23,6 +23,7 @@ const (
 )
 
 // Market — спотовый торговый рынок.
+// Активность определяется полем enabled (active / inactive).
 type Market struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -30,8 +31,7 @@ type Market struct {
 	BaseAsset     string                 `protobuf:"bytes,3,opt,name=base_asset,json=baseAsset,proto3" json:"base_asset,omitempty"`
 	QuoteAsset    string                 `protobuf:"bytes,4,opt,name=quote_asset,json=quoteAsset,proto3" json:"quote_asset,omitempty"`
 	Enabled       bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	DeletedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
-	AllowedRoles  []string               `protobuf:"bytes,7,rep,name=allowed_roles,json=allowedRoles,proto3" json:"allowed_roles,omitempty"`
+	AllowedRoles  []string               `protobuf:"bytes,6,rep,name=allowed_roles,json=allowedRoles,proto3" json:"allowed_roles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -101,13 +101,6 @@ func (x *Market) GetEnabled() bool {
 	return false
 }
 
-func (x *Market) GetDeletedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.DeletedAt
-	}
-	return nil
-}
-
 func (x *Market) GetAllowedRoles() []string {
 	if x != nil {
 		return x.AllowedRoles
@@ -119,18 +112,16 @@ var File_common_v1_market_proto protoreflect.FileDescriptor
 
 const file_common_v1_market_proto_rawDesc = "" +
 	"\n" +
-	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe6\x01\n" +
-	"\x06Market\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
+	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"\xbd\x01\n" +
+	"\x06Market\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12\x1b\n" +
+	"\x04name\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12\x1d\n" +
 	"\n" +
 	"base_asset\x18\x03 \x01(\tR\tbaseAsset\x12\x1f\n" +
 	"\vquote_asset\x18\x04 \x01(\tR\n" +
 	"quoteAsset\x12\x18\n" +
-	"\aenabled\x18\x05 \x01(\bR\aenabled\x129\n" +
-	"\n" +
-	"deleted_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAt\x12#\n" +
-	"\rallowed_roles\x18\a \x03(\tR\fallowedRolesB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
+	"\aenabled\x18\x05 \x01(\bR\aenabled\x12#\n" +
+	"\rallowed_roles\x18\x06 \x03(\tR\fallowedRolesB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_market_proto_rawDescOnce sync.Once
@@ -146,16 +137,14 @@ func file_common_v1_market_proto_rawDescGZIP() []byte {
 
 var file_common_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_common_v1_market_proto_goTypes = []any{
-	(*Market)(nil),                // 0: common.v1.Market
-	(*timestamppb.Timestamp)(nil), // 1: google.protobuf.Timestamp
+	(*Market)(nil), // 0: common.v1.Market
 }
 var file_common_v1_market_proto_depIdxs = []int32{
-	1, // 0: common.v1.Market.deleted_at:type_name -> google.protobuf.Timestamp
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	0, // [0:0] is the sub-list for method output_type
+	0, // [0:0] is the sub-list for method input_type
+	0, // [0:0] is the sub-list for extension type_name
+	0, // [0:0] is the sub-list for extension extendee
+	0, // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_common_v1_market_proto_init() }

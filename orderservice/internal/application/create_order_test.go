@@ -18,16 +18,34 @@ func (s marketCheckerStub) EnsureMarketAvailable(context.Context, string, []stri
 	return s.err
 }
 
+func mustMoney(t *testing.T, amount string) domain.Money {
+	t.Helper()
+	money, err := domain.NewMoney(amount, "USD")
+	if err != nil {
+		t.Fatalf("NewMoney() error = %v", err)
+	}
+	return money
+}
+
+func mustDecimal(t *testing.T, value string) domain.Decimal {
+	t.Helper()
+	decimal, err := domain.NewDecimal(value)
+	if err != nil {
+		t.Fatalf("NewDecimal() error = %v", err)
+	}
+	return decimal
+}
+
 func TestCreateOrder_success(t *testing.T) {
 	repo := memory.NewOrderRepository()
-	uc := application.NewCreateOrder(repo, marketCheckerStub{}, nil)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, nil, nil, nil)
 
 	out, err := uc.Execute(context.Background(), application.CreateOrderInput{
 		UserID:   "user-1",
 		MarketID: "BTC-USDT",
 		Side:     domain.OrderSideBuy,
-		Price:    "100",
-		Quantity: "0.1",
+		Price:    mustMoney(t, "100"),
+		Quantity: mustDecimal(t, "0.1"),
 	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -48,15 +66,42 @@ func TestCreateOrder_success(t *testing.T) {
 	}
 }
 
+func TestCreateOrder_idempotency(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	idempotency := memory.NewIdempotencyStore()
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, idempotency, nil, nil)
+
+	input := application.CreateOrderInput{
+		UserID:         "user-1",
+		MarketID:       "BTC-USDT",
+		Side:           domain.OrderSideBuy,
+		Quantity:       mustDecimal(t, "0.1"),
+		IdempotencyKey: "key-1",
+	}
+
+	first, err := uc.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("first Execute() error = %v", err)
+	}
+
+	second, err := uc.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("second Execute() error = %v", err)
+	}
+	if first.OrderID != second.OrderID {
+		t.Fatalf("order ids differ: %s vs %s", first.OrderID, second.OrderID)
+	}
+}
+
 func TestCreateOrder_marketInactive(t *testing.T) {
 	repo := memory.NewOrderRepository()
-	uc := application.NewCreateOrder(repo, marketCheckerStub{err: domain.ErrMarketInactive}, nil)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{err: domain.ErrMarketInactive}, nil, nil, nil)
 
 	_, err := uc.Execute(context.Background(), application.CreateOrderInput{
 		UserID:   "user-1",
 		MarketID: "SOL-USDT",
 		Side:     domain.OrderSideBuy,
-		Quantity: "1",
+		Quantity: mustDecimal(t, "1"),
 	})
 	if !errors.Is(err, domain.ErrMarketInactive) {
 		t.Fatalf("error = %v, want ErrMarketInactive", err)
@@ -65,13 +110,13 @@ func TestCreateOrder_marketInactive(t *testing.T) {
 
 func TestCreateOrder_forbiddenMarket(t *testing.T) {
 	repo := memory.NewOrderRepository()
-	uc := application.NewCreateOrder(repo, marketCheckerStub{err: domain.ErrForbidden}, nil)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{err: domain.ErrForbidden}, nil, nil, nil)
 
 	_, err := uc.Execute(context.Background(), application.CreateOrderInput{
 		UserID:   "user-1",
 		MarketID: "BNB-USDT",
 		Side:     domain.OrderSideBuy,
-		Quantity: "1",
+		Quantity: mustDecimal(t, "1"),
 	})
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("error = %v, want ErrForbidden", err)
@@ -80,13 +125,13 @@ func TestCreateOrder_forbiddenMarket(t *testing.T) {
 
 func TestCreateOrder_invalidInput(t *testing.T) {
 	repo := memory.NewOrderRepository()
-	uc := application.NewCreateOrder(repo, marketCheckerStub{}, nil)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, nil, nil, nil)
 
 	_, err := uc.Execute(context.Background(), application.CreateOrderInput{
 		MarketID: "BTC-USDT",
 		Side:     domain.OrderSideBuy,
-		Price:    "100",
-		Quantity: "0.1",
+		Price:    mustMoney(t, "100"),
+		Quantity: mustDecimal(t, "0.1"),
 	})
 	if !errors.Is(err, domain.ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)

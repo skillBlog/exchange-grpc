@@ -1,4 +1,4 @@
-.PHONY: proto deps build build-services test test-integration test-race lint clean
+.PHONY: proto deps build build-services test test-integration test-race lint clean check
 
 deps:
 	go mod download
@@ -53,6 +53,8 @@ test-race:
 
 lint:
 	go vet ./userservice/... ./spotservice/... ./orderservice/... ./orderserviceclient/... ./shared/... ./test/integration/...
+
+check: build-services test lint
 
 clean:
 	go clean -cache

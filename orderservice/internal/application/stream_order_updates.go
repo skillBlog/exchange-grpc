@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -28,10 +27,10 @@ func NewStreamOrderUpdates(orders domain.OrderRepository, hub *UpdateHub) *Strea
 // Execute отправляет текущий статус, затем стримит обновления из hub до отмены контекста.
 func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpdatesInput, send func(UpdateEvent) error) error {
 	if strings.TrimSpace(input.OrderID) == "" {
-		return fmt.Errorf("%w: order_id is required", domain.ErrInvalidArgument)
+		return domain.ErrInvalidArgument
 	}
 	if strings.TrimSpace(input.UserID) == "" {
-		return fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
+		return domain.ErrInvalidArgument
 	}
 
 	order, err := uc.orders.GetByIDAndUserID(ctx, input.OrderID, input.UserID)

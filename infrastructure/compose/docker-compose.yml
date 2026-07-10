@@ -1,4 +1,37 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: exchange-postgres
+    environment:
+      POSTGRES_USER: exchange
+      POSTGRES_PASSWORD: exchange
+      POSTGRES_DB: userservice
+    ports:
+      - "5432:5432"
+    volumes:
+      - exchange-postgres-data:/var/lib/postgresql/data
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/02-spotservice.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exchange -d userservice"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - exchange
+
+  redis:
+    image: redis:7-alpine
+    container_name: exchange-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - exchange
+
   userservice:
     build:
       context: ../..
@@ -9,6 +42,14 @@ services:
     environment:
       USER_SERVICE_ADDR: ":50050"
       JWT_SECRET: "dev-exchange-secret"
+      JWT_ACCESS_TTL: "15m"
+      JWT_REFRESH_TTL: "168h"
+      USER_DATABASE_URL: "postgres://exchange:exchange@postgres:5432/userservice?sslmode=disable"
+      USER_MIGRATIONS_DIR: "/app/migrations"
+      LOGIN_RATE_LIMIT: "5"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - exchange
 
@@ -22,6 +63,14 @@ services:
     environment:
       SPOT_SERVICE_ADDR: ":50051"
       JWT_SECRET: "dev-exchange-secret"
+      JWT_ACCESS_TTL: "15m"
+      SPOT_DATABASE_URL: "postgres://exchange:exchange@postgres:5432/spotservice?sslmode=disable"
+      SPOT_MIGRATIONS_DIR: "/app/migrations"
+      MARKET_CACHE_TTL: "30s"
+      VIEW_MARKETS_RATE_LIMIT: "30"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - exchange
 
@@ -36,14 +85,31 @@ services:
       ORDER_SERVICE_ADDR: ":50052"
       SPOT_SERVICE_HOST: "spotservice:50051"
       JWT_SECRET: "dev-exchange-secret"
+      JWT_ACCESS_TTL: "15m"
       SPOT_GRPC_TIMEOUT: "5s"
       ORDER_HUB_BUFFER_SIZE: "256"
+      ORDER_DATABASE_URL: "postgres://exchange:exchange@postgres:5432/orderservice?sslmode=disable"
+      ORDER_MIGRATIONS_DIR: "/app/migrations"
+      REDIS_URL: "redis://redis:6379/0"
+      CREATE_ORDER_GLOBAL_RATE_LIMIT: "20000"
+      CREATE_ORDER_RATE_LIMIT_USER: "10"
+      CREATE_ORDER_RATE_LIMIT_TRADER: "100"
+      CREATE_ORDER_RATE_LIMIT_ADMIN: "1000"
     depends_on:
-      - spotservice
-      - userservice
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      spotservice:
+        condition: service_started
+      userservice:
+        condition: service_started
     networks:
       - exchange
 
 networks:
   exchange:
     driver: bridge
+
+volumes:
+  exchange-postgres-data:

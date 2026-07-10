@@ -7,6 +7,7 @@
 package commonv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -70,9 +71,9 @@ var File_common_v1_uuid_proto protoreflect.FileDescriptor
 
 const file_common_v1_uuid_proto_rawDesc = "" +
 	"\n" +
-	"\x14common/v1/uuid.proto\x12\tcommon.v1\"\x1c\n" +
-	"\x04Uuid\x12\x14\n" +
-	"\x05value\x18\x01 \x01(\tR\x05valueB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
+	"\x14common/v1/uuid.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"&\n" +
+	"\x04Uuid\x12\x1e\n" +
+	"\x05value\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x05valueB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_uuid_proto_rawDescOnce sync.Once

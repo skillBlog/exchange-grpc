@@ -1,7 +1,6 @@
 package grpcserver
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -9,27 +8,11 @@ import (
 	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"github.com/exchange-grpc/shared/grpc"
 )
 
 func toGRPCError(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	switch {
-	case errors.Is(err, domain.ErrInvalidArgument):
-		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, domain.ErrNotFound):
-		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, domain.ErrMarketInactive):
-		return status.Error(codes.FailedPrecondition, err.Error())
-	case errors.Is(err, domain.ErrForbidden):
-		return status.Error(codes.PermissionDenied, err.Error())
-	default:
-		return status.Error(codes.Internal, err.Error())
-	}
+	return grpc.ToStatusError(err, "too many requests")
 }
 
 func orderSideToDomain(side commonv1.OrderSide) (domain.OrderSide, error) {
@@ -71,18 +54,29 @@ func orderStatusToProto(status domain.OrderStatus) commonv1.OrderStatus {
 	}
 }
 
-func moneyToString(money *commonv1.Money) string {
+func moneyToDomain(money *commonv1.Money) (domain.Money, error) {
 	if money == nil {
-		return ""
+		return domain.Money{}, nil
 	}
-	return strings.TrimSpace(money.GetAmount())
+	return domain.NewMoney(money.GetAmount(), money.GetCurrency())
 }
 
-func decimalToString(decimal *commonv1.Decimal) string {
+func decimalToDomain(decimal *commonv1.Decimal) (domain.Decimal, error) {
 	if decimal == nil {
-		return ""
+		return domain.Decimal{}, fmt.Errorf("%w: quantity is required", domain.ErrInvalidArgument)
 	}
-	return strings.TrimSpace(decimal.GetValue())
+	return domain.NewDecimal(decimal.GetValue())
+}
+
+func moneyToProto(money domain.Money) *commonv1.Money {
+	if money.IsZero() {
+		return nil
+	}
+	return &commonv1.Money{Amount: money.Amount, Currency: money.Currency}
+}
+
+func decimalToProto(decimal domain.Decimal) *commonv1.Decimal {
+	return &commonv1.Decimal{Value: decimal.Value}
 }
 
 func uuidToString(id *commonv1.Uuid) string {
@@ -96,30 +90,14 @@ func stringToUuid(value string) *commonv1.Uuid {
 	return &commonv1.Uuid{Value: value}
 }
 
-func moneyFromString(amount string) *commonv1.Money {
-	amount = strings.TrimSpace(amount)
-	if amount == "" {
-		return nil
-	}
-	return &commonv1.Money{Amount: amount, Currency: "USD"}
-}
-
-func decimalFromString(value string) *commonv1.Decimal {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	return &commonv1.Decimal{Value: value}
-}
-
 func orderToGetOrderStatusResponse(order domain.Order) *orderv1.GetOrderStatusResponse {
 	return &orderv1.GetOrderStatusResponse{
 		OrderId:  stringToUuid(order.ID),
 		UserId:   stringToUuid(order.UserID),
 		MarketId: order.MarketID,
 		Side:     orderSideToProto(order.Side),
-		Price:    moneyFromString(order.Price),
-		Quantity: decimalFromString(order.Quantity),
+		Price:    moneyToProto(order.Price),
+		Quantity: decimalToProto(order.Quantity),
 		Status:   orderStatusToProto(order.Status),
 	}
 }

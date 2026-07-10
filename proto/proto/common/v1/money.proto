@@ -4,8 +4,10 @@ package common.v1;
 
 option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
 
-// Money — денежная сумма с валютой.
+import "buf/validate/validate.proto";
+
+// Money — денежная сумма в USD.
 message Money {
-  string amount = 1;
-  string currency = 2;
+  string amount = 1 [(buf.validate.field).string.min_len = 1];
+  string currency = 2 [(buf.validate.field).string.const = "USD"];
 }

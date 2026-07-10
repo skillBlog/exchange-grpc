@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	OrderService_CreateOrder_FullMethodName        = "/order.v1.OrderService/CreateOrder"
 	OrderService_GetOrderStatus_FullMethodName     = "/order.v1.OrderService/GetOrderStatus"
+	OrderService_ListOrders_FullMethodName         = "/order.v1.OrderService/ListOrders"
 	OrderService_StreamOrderUpdates_FullMethodName = "/order.v1.OrderService/StreamOrderUpdates"
 )
 
@@ -32,6 +33,7 @@ const (
 type OrderServiceClient interface {
 	CreateOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
 	GetOrderStatus(ctx context.Context, in *GetOrderStatusRequest, opts ...grpc.CallOption) (*GetOrderStatusResponse, error)
+	ListOrders(ctx context.Context, in *ListOrdersRequest, opts ...grpc.CallOption) (*ListOrdersResponse, error)
 	StreamOrderUpdates(ctx context.Context, in *StreamOrderUpdatesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OrderUpdate], error)
 }
 
@@ -57,6 +59,16 @@ func (c *orderServiceClient) GetOrderStatus(ctx context.Context, in *GetOrderSta
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetOrderStatusResponse)
 	err := c.cc.Invoke(ctx, OrderService_GetOrderStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderServiceClient) ListOrders(ctx context.Context, in *ListOrdersRequest, opts ...grpc.CallOption) (*ListOrdersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOrdersResponse)
+	err := c.cc.Invoke(ctx, OrderService_ListOrders_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +102,7 @@ type OrderService_StreamOrderUpdatesClient = grpc.ServerStreamingClient[OrderUpd
 type OrderServiceServer interface {
 	CreateOrder(context.Context, *CreateOrderRequest) (*CreateOrderResponse, error)
 	GetOrderStatus(context.Context, *GetOrderStatusRequest) (*GetOrderStatusResponse, error)
+	ListOrders(context.Context, *ListOrdersRequest) (*ListOrdersResponse, error)
 	StreamOrderUpdates(*StreamOrderUpdatesRequest, grpc.ServerStreamingServer[OrderUpdate]) error
 	mustEmbedUnimplementedOrderServiceServer()
 }
@@ -106,6 +119,9 @@ func (UnimplementedOrderServiceServer) CreateOrder(context.Context, *CreateOrder
 }
 func (UnimplementedOrderServiceServer) GetOrderStatus(context.Context, *GetOrderStatusRequest) (*GetOrderStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetOrderStatus not implemented")
+}
+func (UnimplementedOrderServiceServer) ListOrders(context.Context, *ListOrdersRequest) (*ListOrdersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOrders not implemented")
 }
 func (UnimplementedOrderServiceServer) StreamOrderUpdates(*StreamOrderUpdatesRequest, grpc.ServerStreamingServer[OrderUpdate]) error {
 	return status.Error(codes.Unimplemented, "method StreamOrderUpdates not implemented")
@@ -167,6 +183,24 @@ func _OrderService_GetOrderStatus_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrderService_ListOrders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOrdersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServiceServer).ListOrders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrderService_ListOrders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServiceServer).ListOrders(ctx, req.(*ListOrdersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OrderService_StreamOrderUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(StreamOrderUpdatesRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -192,6 +226,10 @@ var OrderService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOrderStatus",
 			Handler:    _OrderService_GetOrderStatus_Handler,
+		},
+		{
+			MethodName: "ListOrders",
+			Handler:    _OrderService_ListOrders_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

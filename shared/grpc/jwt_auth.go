@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -75,7 +76,7 @@ func enrichContextFromJWT(ctx context.Context, tokens *sessionvalidation.TokenSe
 	}
 
 	ctx = ContextWithUserID(ctx, claims.UserID)
-	ctx = ContextWithRoles(ctx, claims.Roles)
+	ctx = ContextWithRoles(ctx, roles.NormalizeStrings(claims.Roles))
 	return ctx, nil
 }
 

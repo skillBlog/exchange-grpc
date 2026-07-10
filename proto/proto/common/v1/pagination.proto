@@ -4,8 +4,16 @@ package common.v1;
 
 option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
 
-// Pagination — параметры постраничной выборки.
-message Pagination {
-  int32 page = 1;
-  int32 page_size = 2;
+import "buf/validate/validate.proto";
+
+// CursorPagination — курсорная постраничная выборка.
+message CursorPagination {
+  string page_token = 1;
+  int32 page_size = 2 [(buf.validate.field).int32 = {gte: 1, lte: 100}];
+}
+
+// CursorPageInfo — метаданные курсорной страницы.
+message CursorPageInfo {
+  string next_page_token = 1;
+  bool has_more = 2;
 }

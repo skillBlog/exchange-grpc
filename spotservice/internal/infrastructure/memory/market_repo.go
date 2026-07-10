@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/exchange-grpc/spotservice/internal/domain"
 )
@@ -36,7 +35,7 @@ func (r *MarketRepository) GetByID(_ context.Context, id string) (domain.Market,
 	return market, nil
 }
 
-// ListActive возвращает включённые и не помеченные как удалённые рынки.
+// ListActive возвращает включённые рынки.
 func (r *MarketRepository) ListActive(_ context.Context) ([]domain.Market, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -50,11 +49,8 @@ func (r *MarketRepository) ListActive(_ context.Context) ([]domain.Market, error
 	return active, nil
 }
 
-var referenceSeedTime = time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
-
-// SeedMarkets возвращает набор рынков: активные, отключённые и удалённые.
+// SeedMarkets возвращает набор рынков: активные и отключённые.
 func SeedMarkets() []domain.Market {
-	deletedAt := referenceSeedTime
 	return []domain.Market{
 		{ID: "BTC-USDT", Name: "Bitcoin / Tether", BaseAsset: "BTC", QuoteAsset: "USDT", Enabled: true},
 		{ID: "ETH-USDT", Name: "Ethereum / Tether", BaseAsset: "ETH", QuoteAsset: "USDT", Enabled: true},
@@ -63,7 +59,7 @@ func SeedMarkets() []domain.Market {
 			AllowedRoles: []string{"trader", "admin"},
 		},
 		{ID: "SOL-USDT", Name: "Solana / Tether", BaseAsset: "SOL", QuoteAsset: "USDT", Enabled: false},
-		{ID: "XRP-USDT", Name: "Ripple / Tether", BaseAsset: "XRP", QuoteAsset: "USDT", Enabled: true, DeletedAt: &deletedAt},
+		{ID: "XRP-USDT", Name: "Ripple / Tether", BaseAsset: "XRP", QuoteAsset: "USDT", Enabled: false},
 	}
 }
 

@@ -1,14 +1,11 @@
 package domain
 
-import "errors"
+import sharederrors "github.com/exchange-grpc/shared/errors"
 
 var (
-	// ErrAlreadyExists возвращается при регистрации существующего email.
-	ErrAlreadyExists = errors.New("already exists")
-
-	// ErrUnauthorized возвращается при неверных учётных данных.
-	ErrUnauthorized = errors.New("unauthorized")
-
-	// ErrInvalidArgument возвращается при ошибке валидации.
-	ErrInvalidArgument = errors.New("invalid argument")
+	ErrAlreadyExists   = sharederrors.ErrAlreadyExists
+	ErrUnauthorized    = sharederrors.ErrUnauthorized
+	ErrInvalidArgument = sharederrors.ErrInvalidArgument
+	ErrNotFound        = sharederrors.ErrNotFound
+	ErrRateLimited     = sharederrors.ErrRateLimited
 )

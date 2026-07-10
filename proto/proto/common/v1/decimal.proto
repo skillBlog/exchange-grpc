@@ -4,7 +4,9 @@ package common.v1;
 
 option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
 
+import "buf/validate/validate.proto";
+
 // Decimal — десятичное значение (количество актива).
 message Decimal {
-  string value = 1;
+  string value = 1 [(buf.validate.field).string.min_len = 1];
 }

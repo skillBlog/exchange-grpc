@@ -4,11 +4,13 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/memory"
+	"github.com/exchange-grpc/orderservice/internal/infrastructure/ratelimit"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/spotclient"
 	grpcserver "github.com/exchange-grpc/orderservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/shared/grpc"
@@ -57,7 +59,16 @@ func NewOrder(t *testing.T, spotConn *googlegrpc.ClientConn, tokens *sessionvali
 
 	marketClient := spotclient.New(spotConn, 0)
 	orderRepo := memory.NewOrderRepository()
-	orderServices := grpcserver.NewServices(orderRepo, marketClient, 256)
+	idempotencyStore := memory.NewIdempotencyStore()
+	createOrderLimiter := ratelimit.NewCreateOrderLimiter(application.CreateOrderRateLimitConfig{
+		GlobalLimit:  20000,
+		GlobalWindow: time.Minute,
+		BasicLimit:   1000,
+		PremiumLimit: 1000,
+		AdminLimit:   1000,
+		UserWindow:   time.Minute,
+	})
+	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, 256, nil)
 	orderServer := grpcserver.NewServer(orderServices)
 
 	listener := bufconn.Listen(bufSize)

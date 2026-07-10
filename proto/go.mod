@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/bufbuild/protovalidate v0.14.0 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	golang.org/x/net v0.55.0 // indirect

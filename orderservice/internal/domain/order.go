@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -28,29 +29,36 @@ const (
 
 // Order — market-заявка пользователя на спотовом рынке.
 type Order struct {
-	ID       string
-	UserID   string
-	MarketID string
-	Side     OrderSide
-	Price    string
-	Quantity string
-	Status   OrderStatus
+	ID        string
+	UserID    string
+	MarketID  string
+	Side      OrderSide
+	Price     Money
+	Quantity  Decimal
+	Status    OrderStatus
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // NewOrder создаёт market-ордер с валидацией полей и начальным статусом.
-func NewOrder(id, userID, marketID string, side OrderSide, price, quantity string) (Order, error) {
+func NewOrder(id, userID, marketID string, side OrderSide, price Money, quantity Decimal, now time.Time) (Order, error) {
 	if err := validateOrderInput(userID, marketID, side, quantity); err != nil {
 		return Order{}, err
 	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 
 	return Order{
-		ID:       id,
-		UserID:   userID,
-		MarketID: marketID,
-		Side:     side,
-		Price:    strings.TrimSpace(price),
-		Quantity: strings.TrimSpace(quantity),
-		Status:   OrderStatusCreated,
+		ID:        id,
+		UserID:    userID,
+		MarketID:  marketID,
+		Side:      side,
+		Price:     price,
+		Quantity:  quantity,
+		Status:    OrderStatusCreated,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}, nil
 }
 
@@ -59,7 +67,7 @@ func NewOrderID() string {
 	return uuid.NewString()
 }
 
-func validateOrderInput(userID, marketID string, side OrderSide, quantity string) error {
+func validateOrderInput(userID, marketID string, side OrderSide, quantity Decimal) error {
 	if strings.TrimSpace(userID) == "" {
 		return fmt.Errorf("%w: user_id is required", ErrInvalidArgument)
 	}
@@ -69,7 +77,7 @@ func validateOrderInput(userID, marketID string, side OrderSide, quantity string
 	if side != OrderSideBuy && side != OrderSideSell {
 		return fmt.Errorf("%w: unsupported order side %q", ErrInvalidArgument, side)
 	}
-	if strings.TrimSpace(quantity) == "" {
+	if strings.TrimSpace(quantity.Value) == "" {
 		return fmt.Errorf("%w: quantity is required", ErrInvalidArgument)
 	}
 	return nil

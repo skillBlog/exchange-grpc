@@ -6,9 +6,9 @@ import (
 )
 
 // NewServerFromRepository подключает Spot handlers к репозиторию рынков.
-func NewServerFromRepository(markets domain.MarketRepository) *Server {
+func NewServerFromRepository(markets domain.MarketRepository, limiter application.ViewMarketsRateLimiter) *Server {
 	return NewServer(
-		application.NewViewMarkets(markets),
+		application.NewViewMarkets(markets, limiter),
 		application.NewGetMarket(markets),
 	)
 }

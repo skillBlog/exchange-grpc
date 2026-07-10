@@ -36,7 +36,7 @@ func NewSpot(t *testing.T, tokens *sessionvalidation.TokenService) *Spot {
 
 	listener := bufconn.Listen(bufSize)
 	repo := memory.NewSeededMarketRepository()
-	server := grpcserver.NewServerFromRepository(repo)
+	server := grpcserver.NewServerFromRepository(repo, nil)
 	grpcServer := googlegrpc.NewServer(googlegrpc.UnaryInterceptor(unary))
 	spotv1.RegisterSpotServiceServer(grpcServer, server)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
 )
@@ -17,13 +18,18 @@ type UpdateOrderStatusInput struct {
 
 // UpdateOrderStatus меняет статус ордера и публикует событие обновления.
 type UpdateOrderStatus struct {
-	orders domain.OrderRepository
-	hub    *UpdateHub
+	orders   domain.OrderRepository
+	notifier OrderNotifier
+	now      func() time.Time
 }
 
 // NewUpdateOrderStatus создаёт use case UpdateOrderStatus.
-func NewUpdateOrderStatus(orders domain.OrderRepository, hub *UpdateHub) *UpdateOrderStatus {
-	return &UpdateOrderStatus{orders: orders, hub: hub}
+func NewUpdateOrderStatus(orders domain.OrderRepository, notifier OrderNotifier) *UpdateOrderStatus {
+	return &UpdateOrderStatus{
+		orders:   orders,
+		notifier: notifier,
+		now:      time.Now,
+	}
 }
 
 // Execute обновляет статус ордера, если он принадлежит пользователю.
@@ -43,14 +49,17 @@ func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatu
 		return err
 	}
 
-	order.Status = input.Status
-	if err := uc.orders.Save(ctx, order); err != nil {
+	if err := domain.ValidateTransition(order.Status, input.Status); err != nil {
 		return err
 	}
 
-	if uc.hub != nil {
-		uc.hub.Publish(order.ID, order.Status)
+	now := uc.now().UTC()
+	if err := uc.orders.UpdateStatus(ctx, order.ID, input.Status, now); err != nil {
+		return err
 	}
 
+	if uc.notifier != nil {
+		uc.notifier.Publish(order.ID, input.Status)
+	}
 	return nil
 }

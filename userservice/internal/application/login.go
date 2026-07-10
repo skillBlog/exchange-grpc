@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/userservice/internal/domain"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // LoginInput — параметры входа пользователя.
@@ -18,41 +16,69 @@ type LoginInput struct {
 
 // LoginOutput — результат успешного входа.
 type LoginOutput struct {
-	AccessToken string
+	AccessToken  string
+	RefreshToken string
 }
 
-// Login аутентифицирует пользователя и выпускает JWT.
+// Login аутентифицирует пользователя и выпускает токены.
 type Login struct {
-	users  domain.UserRepository
-	tokens *sessionvalidation.TokenService
+	users        domain.UserRepository
+	hasher       PasswordHasher
+	accessTokens AccessTokenIssuer
+	refreshTokens RefreshTokenManager
+	limiter      LoginRateLimiter
 }
 
 // NewLogin создаёт use case Login.
-func NewLogin(users domain.UserRepository, tokens *sessionvalidation.TokenService) *Login {
-	return &Login{users: users, tokens: tokens}
+func NewLogin(
+	users domain.UserRepository,
+	hasher PasswordHasher,
+	accessTokens AccessTokenIssuer,
+	refreshTokens RefreshTokenManager,
+	limiter LoginRateLimiter,
+) *Login {
+	return &Login{
+		users:         users,
+		hasher:        hasher,
+		accessTokens:  accessTokens,
+		refreshTokens: refreshTokens,
+		limiter:       limiter,
+	}
 }
 
-// Execute проверяет пароль и возвращает access token.
+// Execute проверяет пароль и возвращает access/refresh token.
 func (uc *Login) Execute(ctx context.Context, input LoginInput) (LoginOutput, error) {
-	email := strings.TrimSpace(strings.ToLower(input.Email))
+	email := NormalizeEmail(input.Email)
 	password := strings.TrimSpace(input.Password)
 	if email == "" || password == "" {
 		return LoginOutput{}, fmt.Errorf("%w: email and password are required", domain.ErrInvalidArgument)
 	}
 
+	if uc.limiter != nil && !uc.limiter.Allow(email) {
+		return LoginOutput{}, fmt.Errorf("%w: too many login attempts", domain.ErrRateLimited)
+	}
+
 	user, err := uc.users.GetByEmail(ctx, email)
 	if err != nil {
-		return LoginOutput{}, err
+		return LoginOutput{}, domain.ErrUnauthorized
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return LoginOutput{}, fmt.Errorf("%w: invalid credentials", domain.ErrUnauthorized)
+	if err := uc.hasher.Compare(user.PasswordHash, password); err != nil {
+		return LoginOutput{}, domain.ErrUnauthorized
 	}
 
-	token, err := uc.tokens.Issue(user.ID, user.Roles)
+	accessToken, err := uc.accessTokens.Issue(user.ID, user.RoleStrings())
 	if err != nil {
-		return LoginOutput{}, fmt.Errorf("issue token: %w", err)
+		return LoginOutput{}, fmt.Errorf("issue access token: %w", err)
 	}
 
-	return LoginOutput{AccessToken: token}, nil
+	refreshToken, err := uc.refreshTokens.Issue(ctx, user.ID)
+	if err != nil {
+		return LoginOutput{}, fmt.Errorf("issue refresh token: %w", err)
+	}
+
+	return LoginOutput{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
 }

@@ -7,6 +7,7 @@
 package commonv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -21,29 +22,29 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Pagination — параметры постраничной выборки.
-type Pagination struct {
+// CursorPagination — курсорная постраничная выборка.
+type CursorPagination struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Page          int32                  `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`
+	PageToken     string                 `protobuf:"bytes,1,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Pagination) Reset() {
-	*x = Pagination{}
+func (x *CursorPagination) Reset() {
+	*x = CursorPagination{}
 	mi := &file_common_v1_pagination_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Pagination) String() string {
+func (x *CursorPagination) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Pagination) ProtoMessage() {}
+func (*CursorPagination) ProtoMessage() {}
 
-func (x *Pagination) ProtoReflect() protoreflect.Message {
+func (x *CursorPagination) ProtoReflect() protoreflect.Message {
 	mi := &file_common_v1_pagination_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -55,34 +56,90 @@ func (x *Pagination) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Pagination.ProtoReflect.Descriptor instead.
-func (*Pagination) Descriptor() ([]byte, []int) {
+// Deprecated: Use CursorPagination.ProtoReflect.Descriptor instead.
+func (*CursorPagination) Descriptor() ([]byte, []int) {
 	return file_common_v1_pagination_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Pagination) GetPage() int32 {
+func (x *CursorPagination) GetPageToken() string {
 	if x != nil {
-		return x.Page
+		return x.PageToken
 	}
-	return 0
+	return ""
 }
 
-func (x *Pagination) GetPageSize() int32 {
+func (x *CursorPagination) GetPageSize() int32 {
 	if x != nil {
 		return x.PageSize
 	}
 	return 0
 }
 
+// CursorPageInfo — метаданные курсорной страницы.
+type CursorPageInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NextPageToken string                 `protobuf:"bytes,1,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	HasMore       bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CursorPageInfo) Reset() {
+	*x = CursorPageInfo{}
+	mi := &file_common_v1_pagination_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CursorPageInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CursorPageInfo) ProtoMessage() {}
+
+func (x *CursorPageInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_common_v1_pagination_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CursorPageInfo.ProtoReflect.Descriptor instead.
+func (*CursorPageInfo) Descriptor() ([]byte, []int) {
+	return file_common_v1_pagination_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CursorPageInfo) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+func (x *CursorPageInfo) GetHasMore() bool {
+	if x != nil {
+		return x.HasMore
+	}
+	return false
+}
+
 var File_common_v1_pagination_proto protoreflect.FileDescriptor
 
 const file_common_v1_pagination_proto_rawDesc = "" +
 	"\n" +
-	"\x1acommon/v1/pagination.proto\x12\tcommon.v1\"=\n" +
+	"\x1acommon/v1/pagination.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"Y\n" +
+	"\x10CursorPagination\x12\x1d\n" +
 	"\n" +
-	"Pagination\x12\x12\n" +
-	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x02 \x01(\x05R\bpageSizeB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
+	"page_token\x18\x01 \x01(\tR\tpageToken\x12&\n" +
+	"\tpage_size\x18\x02 \x01(\x05B\t\xbaH\x06\x1a\x04\x18d(\x01R\bpageSize\"S\n" +
+	"\x0eCursorPageInfo\x12&\n" +
+	"\x0fnext_page_token\x18\x01 \x01(\tR\rnextPageToken\x12\x19\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMoreB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_pagination_proto_rawDescOnce sync.Once
@@ -96,9 +153,10 @@ func file_common_v1_pagination_proto_rawDescGZIP() []byte {
 	return file_common_v1_pagination_proto_rawDescData
 }
 
-var file_common_v1_pagination_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_common_v1_pagination_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_common_v1_pagination_proto_goTypes = []any{
-	(*Pagination)(nil), // 0: common.v1.Pagination
+	(*CursorPagination)(nil), // 0: common.v1.CursorPagination
+	(*CursorPageInfo)(nil),   // 1: common.v1.CursorPageInfo
 }
 var file_common_v1_pagination_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -119,7 +177,7 @@ func file_common_v1_pagination_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_v1_pagination_proto_rawDesc), len(file_common_v1_pagination_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
