@@ -1,6 +1,11 @@
 package domain
 
-import "github.com/exchange-grpc/shared/roles"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/exchange-grpc/shared/roles"
+)
 
 // Market — спотовая торговая пара, доступная на бирже.
 type Market struct {
@@ -10,6 +15,32 @@ type Market struct {
 	QuoteAsset   string
 	Enabled      bool
 	AllowedRoles []string
+}
+
+const maxMarketIDLen = 64
+
+// NewMarket создаёт Market с нормализацией ролей и базовой валидацией.
+func NewMarket(id, name, baseAsset, quoteAsset string, enabled bool, allowedRoles []string) (Market, error) {
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	if id == "" {
+		return Market{}, fmt.Errorf("%w: market id is required", ErrInvalidArgument)
+	}
+	if len(id) > maxMarketIDLen {
+		return Market{}, fmt.Errorf("%w: market id exceeds %d characters", ErrInvalidArgument, maxMarketIDLen)
+	}
+	if name == "" {
+		return Market{}, fmt.Errorf("%w: market name is required", ErrInvalidArgument)
+	}
+
+	return Market{
+		ID:           id,
+		Name:         name,
+		BaseAsset:    strings.TrimSpace(baseAsset),
+		QuoteAsset:   strings.TrimSpace(quoteAsset),
+		Enabled:      enabled,
+		AllowedRoles: roles.NormalizeStrings(allowedRoles),
+	}, nil
 }
 
 // IsActive сообщает, доступен ли рынок для торговли.

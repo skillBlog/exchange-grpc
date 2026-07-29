@@ -33,7 +33,7 @@ func UnaryServerLogging(log *zap.Logger) grpc.UnaryServerInterceptor {
 			return resp, err
 		}
 
-		log.Info("grpc request", fields...)
+		log.Debug("grpc request", fields...)
 		return resp, nil
 	}
 }
@@ -47,7 +47,7 @@ func StreamServerLogging(log *zap.Logger) grpc.StreamServerInterceptor {
 	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 		ctx := stream.Context()
-		log.Info("grpc stream started",
+		log.Debug("grpc stream started",
 			zap.String("method", info.FullMethod),
 			zap.String("request_id", RequestIDFromContext(ctx)),
 		)
@@ -67,7 +67,7 @@ func StreamServerLogging(log *zap.Logger) grpc.StreamServerInterceptor {
 			return err
 		}
 
-		log.Info("grpc stream completed", fields...)
+		log.Debug("grpc stream completed", fields...)
 		return nil
 	}
 }

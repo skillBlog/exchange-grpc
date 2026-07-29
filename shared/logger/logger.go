@@ -1,19 +1,68 @@
 package logger
 
 import (
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-// New создаёт production-ready zap-логгер с выводом в stdout.
-func New() (*zap.Logger, error) {
+// New создаёт production zap-логгер с AtomicLevel (уровень из LOG_LEVEL).
+func New() (*zap.Logger, zap.AtomicLevel, error) {
+	level := zap.NewAtomicLevelAt(zap.InfoLevel)
+	if raw := strings.TrimSpace(os.Getenv("LOG_LEVEL")); raw != "" {
+		if err := SetLevel(level, raw); err != nil {
+			return nil, zap.AtomicLevel{}, err
+		}
+	}
+
 	cfg := zap.NewProductionConfig()
+	cfg.Level = level
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	return cfg.Build()
+
+	log, err := cfg.Build()
+	if err != nil {
+		return nil, zap.AtomicLevel{}, err
+	}
+	return log, level, nil
 }
 
 // NewNop возвращает no-op логгер для тестов.
 func NewNop() *zap.Logger {
 	return zap.NewNop()
+}
+
+// SetLevel меняет уровень логирования в runtime.
+func SetLevel(level zap.AtomicLevel, raw string) error {
+	parsed, err := zapcore.ParseLevel(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("parse log level %q: %w", raw, err)
+	}
+	level.SetLevel(parsed)
+	return nil
+}
+
+// ServeLevelAdmin поднимает HTTP endpoint AtomicLevel (GET/PUT), если addr не пустой.
+// Пример: LOG_LEVEL_ADDR=:9090 → curl -X PUT localhost:9090 -d '{"level":"debug"}'
+func ServeLevelAdmin(addr string, level zap.AtomicLevel, log *zap.Logger) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/", level)
+	go func() {
+		if err := http.ListenAndServe(addr, mux); err != nil && err != http.ErrServerClosed {
+			if log != nil {
+				log.Warn("log level admin server stopped", zap.Error(err))
+			}
+		}
+	}()
+	if log != nil {
+		log.Info("log level admin listening", zap.String("addr", addr))
+	}
 }

@@ -3,9 +3,10 @@ package application
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
+	"github.com/exchange-grpc/shared/roles"
+	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/spotservice/internal/domain"
 )
 
@@ -40,27 +41,14 @@ func NewViewMarkets(markets domain.MarketRepository, limiter ViewMarketsRateLimi
 	return &ViewMarkets{markets: markets, limiter: limiter}
 }
 
-// Execute возвращает активные рынки, доступные указанным ролям пользователя.
-func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (ViewMarketsOutput, error) {
+// Execute возвращает страницу активных рынков с фильтрацией и пагинацией на уровне репозитория.
+func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out ViewMarketsOutput, err error) {
+	ctx, span := tracing.Start(ctx, "spot.ViewMarkets")
+	defer tracing.End(span, &err)
+
 	if uc.limiter != nil && input.UserID != "" && !uc.limiter.Allow(input.UserID) {
 		return ViewMarketsOutput{}, fmt.Errorf("%w: too many requests", domain.ErrRateLimited)
 	}
-
-	markets, err := uc.markets.ListActive(ctx)
-	if err != nil {
-		return ViewMarketsOutput{}, err
-	}
-
-	filtered := make([]domain.Market, 0, len(markets))
-	for _, market := range markets {
-		if market.IsAccessibleBy(input.UserRoles) {
-			filtered = append(filtered, market)
-		}
-	}
-
-	slices.SortFunc(filtered, func(a, b domain.Market) int {
-		return strings.Compare(a.ID, b.ID)
-	})
 
 	pageSize := input.PageSize
 	if pageSize <= 0 {
@@ -70,34 +58,24 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (Vie
 		pageSize = maxPageSize
 	}
 
-	start := 0
-	if input.PageToken != "" {
-		idx, found := slices.BinarySearchFunc(filtered, input.PageToken, func(market domain.Market, token string) int {
-			return strings.Compare(market.ID, token)
-		})
-		if found {
-			start = idx + 1
-		} else if idx < len(filtered) {
-			start = idx
-		} else {
-			return ViewMarketsOutput{Markets: []domain.Market{}}, nil
-		}
+	userRoles := roles.NormalizeStrings(input.UserRoles)
+	markets, err := uc.markets.ListActivePage(ctx, userRoles, int(pageSize)+1, strings.TrimSpace(input.PageToken))
+	if err != nil {
+		return ViewMarketsOutput{}, err
 	}
 
-	end := start + int(pageSize)
-	hasMore := end < len(filtered)
-	if end > len(filtered) {
-		end = len(filtered)
+	hasMore := len(markets) > int(pageSize)
+	if hasMore {
+		markets = markets[:pageSize]
 	}
 
-	page := filtered[start:end]
 	var nextPageToken string
-	if hasMore && len(page) > 0 {
-		nextPageToken = page[len(page)-1].ID
+	if hasMore && len(markets) > 0 {
+		nextPageToken = markets[len(markets)-1].ID
 	}
 
 	return ViewMarketsOutput{
-		Markets:       page,
+		Markets:       markets,
 		NextPageToken: nextPageToken,
 		HasMore:       hasMore,
 	}, nil

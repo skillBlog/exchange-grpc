@@ -5,6 +5,7 @@ package user.v1;
 option go_package = "github.com/exchange-grpc/proto/pb/user/v1;userv1";
 
 import "buf/validate/validate.proto";
+import "common/v1/role.proto";
 
 // UserService — аутентификация и управление пользователями.
 service UserService {
@@ -22,6 +23,8 @@ message RegisterRequest {
 
 message RegisterResponse {
   string user_id = 1 [(buf.validate.field).string.uuid = true];
+  string access_token = 2 [(buf.validate.field).string.min_len = 1];
+  string refresh_token = 3;
 }
 
 message LoginRequest {
@@ -40,6 +43,7 @@ message RefreshTokenRequest {
 
 message RefreshTokenResponse {
   string access_token = 1 [(buf.validate.field).string.min_len = 1];
+  string refresh_token = 2 [(buf.validate.field).string.min_len = 1];
 }
 
 // GetUserRequest — user_id извлекается из JWT/metadata.
@@ -48,7 +52,7 @@ message GetUserRequest {}
 message GetUserResponse {
   string user_id = 1 [(buf.validate.field).string.uuid = true];
   string email = 2 [(buf.validate.field).string.email = true];
-  repeated string roles = 3;
+  repeated common.v1.Role roles = 3 [(buf.validate.field).repeated.items.enum = {defined_only: true, not_in: [0]}];
 }
 
 message LogoutRequest {

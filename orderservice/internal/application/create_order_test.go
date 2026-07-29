@@ -91,6 +91,54 @@ func TestCreateOrder_idempotency(t *testing.T) {
 	if first.OrderID != second.OrderID {
 		t.Fatalf("order ids differ: %s vs %s", first.OrderID, second.OrderID)
 	}
+
+	all, err := repo.ListByUserID(context.Background(), "user-1", 100, "")
+	if err != nil {
+		t.Fatalf("ListByUserID() error = %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("orders count = %d, want 1 (no duplicates)", len(all))
+	}
+}
+
+type createFailRepo struct {
+	*memory.OrderRepository
+	failOnce bool
+}
+
+func (r *createFailRepo) Create(ctx context.Context, order domain.Order) error {
+	if r.failOnce {
+		r.failOnce = false
+		return errors.New("db unavailable")
+	}
+	return r.OrderRepository.Create(ctx, order)
+}
+
+func TestCreateOrder_releasesIdempotencyKeyWhenCreateFails(t *testing.T) {
+	base := memory.NewOrderRepository()
+	repo := &createFailRepo{OrderRepository: base, failOnce: true}
+	idempotency := memory.NewIdempotencyStore()
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, idempotency, nil, nil)
+
+	input := application.CreateOrderInput{
+		UserID:         "user-1",
+		MarketID:       "BTC-USDT",
+		Side:           domain.OrderSideBuy,
+		Quantity:       mustDecimal(t, "0.1"),
+		IdempotencyKey: "key-fail",
+	}
+
+	if _, err := uc.Execute(context.Background(), input); err == nil {
+		t.Fatal("expected create error")
+	}
+
+	out, err := uc.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("retry Execute() error = %v", err)
+	}
+	if out.OrderID == "" {
+		t.Fatal("expected order id on retry after released key")
+	}
 }
 
 func TestCreateOrder_marketInactive(t *testing.T) {

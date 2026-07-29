@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
 )
 
@@ -47,15 +48,23 @@ func NewLogin(
 }
 
 // Execute проверяет пароль и возвращает access/refresh token.
-func (uc *Login) Execute(ctx context.Context, input LoginInput) (LoginOutput, error) {
+func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput, err error) {
+	ctx, span := tracing.Start(ctx, "user.Login")
+	defer tracing.End(span, &err)
+
 	email := NormalizeEmail(input.Email)
 	password := strings.TrimSpace(input.Password)
-	if email == "" || password == "" {
-		return LoginOutput{}, fmt.Errorf("%w: email and password are required", domain.ErrInvalidArgument)
+	if err = ValidateEmail(email); err != nil {
+		return LoginOutput{}, err
+	}
+	if password == "" {
+		return LoginOutput{}, fmt.Errorf("%w: password is required", domain.ErrInvalidArgument)
 	}
 
-	if uc.limiter != nil && !uc.limiter.Allow(email) {
-		return LoginOutput{}, fmt.Errorf("%w: too many login attempts", domain.ErrRateLimited)
+	if uc.limiter != nil {
+		if err = uc.limiter.Allow(ctx, email); err != nil {
+			return LoginOutput{}, err
+		}
 	}
 
 	user, err := uc.users.GetByEmail(ctx, email)
@@ -63,7 +72,7 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (LoginOutput, er
 		return LoginOutput{}, domain.ErrUnauthorized
 	}
 
-	if err := uc.hasher.Compare(user.PasswordHash, password); err != nil {
+	if err = uc.hasher.Compare(user.PasswordHash, password); err != nil {
 		return LoginOutput{}, domain.ErrUnauthorized
 	}
 

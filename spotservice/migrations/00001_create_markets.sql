@@ -1,6 +1,6 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS markets (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     name TEXT NOT NULL,
     base_asset TEXT NOT NULL,
     quote_asset TEXT NOT NULL,

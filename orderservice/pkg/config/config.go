@@ -16,6 +16,8 @@ const (
 	defaultDatabaseURL     = "postgres://exchange:exchange@localhost:5432/orderservice?sslmode=disable"
 	defaultMigrationsDir   = "migrations"
 	defaultRedisURL        = "redis://localhost:6379/0"
+	defaultRedisPoolSize   = 10
+	defaultRedisMaxRetries = 3
 
 	defaultCreateOrderGlobalLimit  = 20000
 	defaultCreateOrderBasicLimit   = 10
@@ -33,8 +35,11 @@ type Config struct {
 	SpotGRPCTimeout    time.Duration
 	OrderHubBufferSize int
 	DatabaseURL        string
-	MigrationsDir      string
-	RedisURL           string
+	MigrationsDir        string
+	RedisURL             string
+	RedisPoolSize        int
+	RedisMaxRetries      int
+	LogLevelAddr         string
 	CreateOrderRateLimit CreateOrderRateLimitConfig
 }
 
@@ -60,6 +65,9 @@ func LoadConfig() Config {
 		DatabaseURL:        envOrDefault("ORDER_DATABASE_URL", defaultDatabaseURL),
 		MigrationsDir:      envOrDefault("ORDER_MIGRATIONS_DIR", defaultMigrationsDir),
 		RedisURL:           envOrDefault("REDIS_URL", defaultRedisURL),
+		RedisPoolSize:      envIntOrDefault("REDIS_POOL_SIZE", defaultRedisPoolSize),
+		RedisMaxRetries:    envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
+		LogLevelAddr:       os.Getenv("LOG_LEVEL_ADDR"),
 		CreateOrderRateLimit: CreateOrderRateLimitConfig{
 			GlobalLimit:  envIntOrDefault("CREATE_ORDER_GLOBAL_RATE_LIMIT", defaultCreateOrderGlobalLimit),
 			GlobalWindow: envDurationOrDefault("CREATE_ORDER_GLOBAL_RATE_WINDOW", defaultCreateOrderRateWindow),

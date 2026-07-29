@@ -22,5 +22,5 @@ type RefreshTokenManager interface {
 
 // LoginRateLimiter ограничивает частоту попыток входа по email.
 type LoginRateLimiter interface {
-	Allow(email string) bool
+	Allow(ctx context.Context, email string) error
 }

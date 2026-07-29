@@ -31,7 +31,7 @@ type Market struct {
 	BaseAsset     string                 `protobuf:"bytes,3,opt,name=base_asset,json=baseAsset,proto3" json:"base_asset,omitempty"`
 	QuoteAsset    string                 `protobuf:"bytes,4,opt,name=quote_asset,json=quoteAsset,proto3" json:"quote_asset,omitempty"`
 	Enabled       bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	AllowedRoles  []string               `protobuf:"bytes,6,rep,name=allowed_roles,json=allowedRoles,proto3" json:"allowed_roles,omitempty"`
+	AllowedRoles  []Role                 `protobuf:"varint,6,rep,packed,name=allowed_roles,json=allowedRoles,proto3,enum=common.v1.Role" json:"allowed_roles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -101,7 +101,7 @@ func (x *Market) GetEnabled() bool {
 	return false
 }
 
-func (x *Market) GetAllowedRoles() []string {
+func (x *Market) GetAllowedRoles() []Role {
 	if x != nil {
 		return x.AllowedRoles
 	}
@@ -112,7 +112,7 @@ var File_common_v1_market_proto protoreflect.FileDescriptor
 
 const file_common_v1_market_proto_rawDesc = "" +
 	"\n" +
-	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"\xbd\x01\n" +
+	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\x1a\x14common/v1/role.proto\"\xdf\x01\n" +
 	"\x06Market\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12\x1b\n" +
 	"\x04name\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12\x1d\n" +
@@ -120,8 +120,8 @@ const file_common_v1_market_proto_rawDesc = "" +
 	"base_asset\x18\x03 \x01(\tR\tbaseAsset\x12\x1f\n" +
 	"\vquote_asset\x18\x04 \x01(\tR\n" +
 	"quoteAsset\x12\x18\n" +
-	"\aenabled\x18\x05 \x01(\bR\aenabled\x12#\n" +
-	"\rallowed_roles\x18\x06 \x03(\tR\fallowedRolesB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
+	"\aenabled\x18\x05 \x01(\bR\aenabled\x12E\n" +
+	"\rallowed_roles\x18\x06 \x03(\x0e2\x0f.common.v1.RoleB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\fallowedRolesB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_market_proto_rawDescOnce sync.Once
@@ -138,13 +138,15 @@ func file_common_v1_market_proto_rawDescGZIP() []byte {
 var file_common_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_common_v1_market_proto_goTypes = []any{
 	(*Market)(nil), // 0: common.v1.Market
+	(Role)(0),      // 1: common.v1.Role
 }
 var file_common_v1_market_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	1, // 0: common.v1.Market.allowed_roles:type_name -> common.v1.Role
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_common_v1_market_proto_init() }
@@ -152,6 +154,7 @@ func file_common_v1_market_proto_init() {
 	if File_common_v1_market_proto != nil {
 		return
 	}
+	file_common_v1_role_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

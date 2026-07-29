@@ -5,6 +5,7 @@ import (
 
 	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
 	"github.com/exchange-grpc/shared/grpc"
+	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/spotservice/internal/domain"
 )
 
@@ -19,7 +20,7 @@ func marketToProto(market domain.Market) *commonv1.Market {
 		BaseAsset:    market.BaseAsset,
 		QuoteAsset:   market.QuoteAsset,
 		Enabled:      market.Enabled,
-		AllowedRoles: append([]string(nil), market.AllowedRoles...),
+		AllowedRoles: rolesToProto(market.AllowedRoles),
 	}
 }
 
@@ -31,10 +32,30 @@ func marketsToProto(markets []domain.Market) []*commonv1.Market {
 	return result
 }
 
+func rolesToProto(values []string) []commonv1.Role {
+	result := make([]commonv1.Role, 0, len(values))
+	for _, value := range values {
+		role, ok := roles.Parse(value)
+		if !ok {
+			continue
+		}
+		switch role {
+		case roles.RoleUser:
+			result = append(result, commonv1.Role_ROLE_USER)
+		case roles.RoleTrader:
+			result = append(result, commonv1.Role_ROLE_TRADER)
+		case roles.RoleAdmin:
+			result = append(result, commonv1.Role_ROLE_ADMIN)
+		}
+	}
+	return result
+}
+
 // IsDomainError сообщает, распознана ли ошибка как domain sentinel.
 func IsDomainError(err error) bool {
 	return errors.Is(err, domain.ErrInvalidArgument) ||
 		errors.Is(err, domain.ErrNotFound) ||
+		errors.Is(err, domain.ErrFailedPrecondition) ||
 		errors.Is(err, domain.ErrMarketInactive) ||
 		errors.Is(err, domain.ErrForbidden)
 }

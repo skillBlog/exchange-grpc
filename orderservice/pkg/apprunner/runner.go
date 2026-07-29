@@ -23,6 +23,8 @@ import (
 	"github.com/exchange-grpc/shared/logger"
 	sharedredis "github.com/exchange-grpc/shared/redis"
 	"github.com/exchange-grpc/shared/sessionvalidation"
+	"github.com/exchange-grpc/shared/tracing"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	googlegrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -41,11 +43,12 @@ func NewAppRunner(cfg config.Config) *AppRunner {
 
 // Run стартует gRPC-сервер и блокируется до сигнала завершения.
 func (r *AppRunner) Run() {
-	log, err := logger.New()
+	log, level, err := logger.New()
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = log.Sync() }()
+	logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
 
 	if err := r.run(log); err != nil {
 		log.Fatal("orderservice failed", zap.Error(err))
@@ -53,14 +56,22 @@ func (r *AppRunner) Run() {
 }
 
 func (r *AppRunner) run(log *zap.Logger) error {
-	ctx := context.Background()
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	shutdownTracing, err := tracing.Setup(runCtx, "orderservice")
+	if err != nil {
+		return fmt.Errorf("init tracing: %w", err)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
-	if err := postgres.RunMigrations(ctx, r.cfg.DatabaseURL, migrationsDir); err != nil {
+	if err := postgres.RunMigrations(runCtx, r.cfg.DatabaseURL, migrationsDir); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
-	db, err := postgres.Connect(ctx, r.cfg.DatabaseURL)
+	db, err := postgres.Connect(runCtx, r.cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}
@@ -72,7 +83,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	}
 	validator := grpc.MustNewProtoValidator()
 
-	spotConn, err := spotclient.Dial(context.Background(), r.cfg.SpotServiceHost)
+	spotConn, err := spotclient.Dial(runCtx, r.cfg.SpotServiceHost)
 	if err != nil {
 		return fmt.Errorf("dial spot service: %w", err)
 	}
@@ -93,7 +104,12 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	var createOrderLimiter application.CreateOrderRateLimiter
 	var redisClient *sharedredis.Client
-	redisClient, err = sharedredis.Connect(ctx, r.cfg.RedisURL)
+	redisClient, err = sharedredis.Connect(
+		runCtx,
+		r.cfg.RedisURL,
+		sharedredis.WithPoolSize(r.cfg.RedisPoolSize),
+		sharedredis.WithMaxRetries(r.cfg.RedisMaxRetries),
+	)
 	if err != nil {
 		log.Warn("redis unavailable, using in-memory create order rate limiter", zap.Error(err))
 		createOrderLimiter = ratelimit.NewCreateOrderLimiter(rateLimitCfg)
@@ -107,6 +123,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	server := grpcserver.NewServer(orderServices)
 
 	grpcServer := googlegrpc.NewServer(
+		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
 		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
 			grpc.UnaryServerRequestID,
 			grpc.UnaryServerLogging(log),
@@ -123,7 +140,6 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(orderv1.OrderService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
 
 	listener, err := net.Listen("tcp", r.cfg.GRPCAddr)
@@ -131,19 +147,18 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		return fmt.Errorf("listen %s: %w", r.cfg.GRPCAddr, err)
 	}
 
-	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	healthChecks := []sharedhealth.Checker{db.Ping}
+	criticalChecks := []sharedhealth.Checker{db.Ping}
+	var optionalChecks []sharedhealth.Checker
 	if redisClient != nil {
-		healthChecks = append(healthChecks, redisClient.Ping)
+		optionalChecks = append(optionalChecks, redisClient.Ping)
 	}
 	healthWatcher := sharedhealth.NewWatcher(
 		healthServer,
 		orderv1.OrderService_ServiceDesc.ServiceName,
 		10*time.Second,
 		log,
-		healthChecks...,
+		criticalChecks,
+		optionalChecks...,
 	)
 	go healthWatcher.Run(runCtx)
 

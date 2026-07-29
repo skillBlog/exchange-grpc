@@ -24,7 +24,7 @@ func TestLogin_success(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher())
+	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
 		Password: "password123",
@@ -65,7 +65,7 @@ func TestLogin_invalidPassword(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher())
+	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
 		Password: "password123",

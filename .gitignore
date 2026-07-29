@@ -27,7 +27,8 @@ Thumbs.db
 
 # Окружение
 .env
-.env.*
+.env.local
+!.env.example
 
 # Сгенерированные файлы (раскомментируйте, если генерируете только локально)
 # api/proto/exchange/v1/*.pb.go

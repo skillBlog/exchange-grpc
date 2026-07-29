@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	"github.com/exchange-grpc/shared/tracing"
 )
 
 // GetOrderStatusInput идентифицирует ордер для запроса статуса.
@@ -25,7 +26,12 @@ func NewGetOrderStatus(orders domain.OrderRepository) *GetOrderStatus {
 }
 
 // Execute загружает ордер при совпадении order_id и user_id.
-func (uc *GetOrderStatus) Execute(ctx context.Context, input GetOrderStatusInput) (domain.Order, error) {
+func (uc *GetOrderStatus) Execute(ctx context.Context, input GetOrderStatusInput) (order domain.Order, err error) {
+	ctx, span := tracing.Start(ctx, "order.GetOrderStatus",
+		tracing.Attr("order.id", strings.TrimSpace(input.OrderID)),
+	)
+	defer tracing.End(span, &err)
+
 	if strings.TrimSpace(input.OrderID) == "" {
 		return domain.Order{}, fmt.Errorf("%w: order_id is required", domain.ErrInvalidArgument)
 	}

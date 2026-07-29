@@ -34,20 +34,33 @@ func (r *MarketRepository) GetByID(ctx context.Context, id string) (domain.Marke
 	return market, err
 }
 
-// ListActive возвращает включённые рынки.
-func (r *MarketRepository) ListActive(ctx context.Context) ([]domain.Market, error) {
+// ListActivePage возвращает страницу активных рынков с RBAC-фильтром и курсором по id.
+func (r *MarketRepository) ListActivePage(ctx context.Context, userRoles []string, limit int, afterID string) ([]domain.Market, error) {
+	if limit <= 0 {
+		return []domain.Market{}, nil
+	}
+	if userRoles == nil {
+		userRoles = []string{}
+	}
+
 	rows, err := r.db.Pool.Query(ctx, `
 		SELECT id, name, base_asset, quote_asset, enabled, allowed_roles
 		FROM markets
 		WHERE enabled = TRUE
+			AND ($2 = '' OR id > $2)
+			AND (
+				cardinality(allowed_roles) = 0
+				OR allowed_roles && $1::text[]
+			)
 		ORDER BY id
-	`)
+		LIMIT $3
+	`, userRoles, afterID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list active markets: %w", err)
 	}
 	defer rows.Close()
 
-	markets := make([]domain.Market, 0)
+	markets := make([]domain.Market, 0, limit)
 	for rows.Next() {
 		market, err := scanMarket(rows)
 		if err != nil {
@@ -61,23 +74,32 @@ func (r *MarketRepository) ListActive(ctx context.Context) ([]domain.Market, err
 	return markets, nil
 }
 
+// Ping проверяет доступность PostgreSQL.
+func (r *MarketRepository) Ping(ctx context.Context) error {
+	return r.db.Ping(ctx)
+}
+
 type marketRow interface {
 	Scan(dest ...any) error
 }
 
 func scanMarket(row marketRow) (domain.Market, error) {
-	var market domain.Market
+	var (
+		id, name, baseAsset, quoteAsset string
+		enabled                         bool
+		allowedRoles                    []string
+	)
 	if err := row.Scan(
-		&market.ID,
-		&market.Name,
-		&market.BaseAsset,
-		&market.QuoteAsset,
-		&market.Enabled,
-		&market.AllowedRoles,
+		&id,
+		&name,
+		&baseAsset,
+		&quoteAsset,
+		&enabled,
+		&allowedRoles,
 	); err != nil {
 		return domain.Market{}, err
 	}
-	return market, nil
+	return domain.NewMarket(id, name, baseAsset, quoteAsset, enabled, allowedRoles)
 }
 
 var _ domain.MarketRepository = (*MarketRepository)(nil)

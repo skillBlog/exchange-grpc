@@ -1,13 +1,16 @@
 package ratelimit
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/exchange-grpc/userservice/internal/application"
+	"github.com/exchange-grpc/userservice/internal/domain"
 )
 
-// LoginLimiter ограничивает число попыток входа по email в заданном окне.
+// LoginLimiter ограничивает число попыток входа по email в заданном окне (in-memory).
 type LoginLimiter struct {
 	mu          sync.Mutex
 	attempts    map[string][]time.Time
@@ -32,8 +35,8 @@ func NewLoginLimiter(maxAttempts int, window time.Duration) *LoginLimiter {
 	}
 }
 
-// Allow возвращает true, если попытка входа разрешена.
-func (l *LoginLimiter) Allow(email string) bool {
+// Allow возвращает ошибку, если лимит попыток исчерпан.
+func (l *LoginLimiter) Allow(_ context.Context, email string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -50,11 +53,11 @@ func (l *LoginLimiter) Allow(email string) bool {
 
 	if len(active) >= l.maxAttempts {
 		l.attempts[email] = active
-		return false
+		return fmt.Errorf("%w: too many login attempts", domain.ErrRateLimited)
 	}
 
 	l.attempts[email] = append(active, now)
-	return true
+	return nil
 }
 
 var _ application.LoginRateLimiter = (*LoginLimiter)(nil)

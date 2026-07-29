@@ -16,11 +16,13 @@ import (
 	"github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/sessionvalidation"
+	"github.com/exchange-grpc/shared/tracing"
 	grpcserver "github.com/exchange-grpc/spotservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/cache"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/postgres"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/ratelimit"
 	"github.com/exchange-grpc/spotservice/pkg/config"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	googlegrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -39,11 +41,12 @@ func NewAppRunner(cfg config.Config) *AppRunner {
 
 // Run стартует gRPC-сервер и блокируется до сигнала завершения.
 func (r *AppRunner) Run() {
-	log, err := logger.New()
+	log, level, err := logger.New()
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = log.Sync() }()
+	logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
 
 	if err := r.run(log); err != nil {
 		log.Fatal("spotservice failed", zap.Error(err))
@@ -51,14 +54,22 @@ func (r *AppRunner) Run() {
 }
 
 func (r *AppRunner) run(log *zap.Logger) error {
-	ctx := context.Background()
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	shutdownTracing, err := tracing.Setup(runCtx, "spotservice")
+	if err != nil {
+		return fmt.Errorf("init tracing: %w", err)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
-	if err := postgres.RunMigrations(ctx, r.cfg.DatabaseURL, migrationsDir); err != nil {
+	if err := postgres.RunMigrations(runCtx, r.cfg.DatabaseURL, migrationsDir); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
-	db, err := postgres.Connect(ctx, r.cfg.DatabaseURL)
+	db, err := postgres.Connect(runCtx, r.cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}
@@ -75,6 +86,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	server := grpcserver.NewServerFromRepository(marketRepo, viewMarketsLimiter)
 
 	grpcServer := googlegrpc.NewServer(
+		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
 		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
 			grpc.UnaryServerRequestID,
 			grpc.UnaryServerLogging(log),
@@ -86,7 +98,6 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(spotv1.SpotService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
 
 	listener, err := net.Listen("tcp", r.cfg.GRPCAddr)
@@ -94,16 +105,12 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		return fmt.Errorf("listen %s: %w", r.cfg.GRPCAddr, err)
 	}
 
-	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	healthWatcher := sharedhealth.NewWatcher(
 		healthServer,
 		spotv1.SpotService_ServiceDesc.ServiceName,
 		10*time.Second,
 		log,
-		db.Ping,
-		marketRepo.Ping,
+		[]sharedhealth.Checker{db.Ping, marketRepo.Ping},
 	)
 	go healthWatcher.Run(runCtx)
 

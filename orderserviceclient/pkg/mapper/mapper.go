@@ -23,11 +23,3 @@ func DecimalFromString(value string) *commonv1.Decimal {
 	}
 	return &commonv1.Decimal{Value: value}
 }
-
-// UuidToString извлекает строковое значение из Uuid.
-func UuidToString(id *commonv1.Uuid) string {
-	if id == nil {
-		return ""
-	}
-	return strings.TrimSpace(id.GetValue())
-}

@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
+
+// Role — роль пользователя в системе.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_USER = 1;
+  ROLE_TRADER = 2;
+  ROLE_ADMIN = 3;
+}

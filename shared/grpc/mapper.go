@@ -16,7 +16,7 @@ func DefaultErrorMappings(rateLimitedMessage string) []ErrorMapping {
 		{Sentinel: sharederrors.ErrForbidden, Code: codes.PermissionDenied},
 		{Sentinel: sharederrors.ErrUnauthorized, Code: codes.Unauthenticated},
 		{Sentinel: sharederrors.ErrAlreadyExists, Code: codes.AlreadyExists},
-		{Sentinel: sharederrors.ErrMarketInactive, Code: codes.FailedPrecondition},
+		{Sentinel: sharederrors.ErrFailedPrecondition, Code: codes.FailedPrecondition},
 		{Sentinel: sharederrors.ErrRateLimited, Code: codes.ResourceExhausted, Message: rateLimitedMessage},
 	}
 }

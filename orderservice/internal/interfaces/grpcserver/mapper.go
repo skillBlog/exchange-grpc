@@ -9,6 +9,7 @@ import (
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/shared/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func toGRPCError(err error) error {
@@ -79,32 +80,26 @@ func decimalToProto(decimal domain.Decimal) *commonv1.Decimal {
 	return &commonv1.Decimal{Value: decimal.Value}
 }
 
-func uuidToString(id *commonv1.Uuid) string {
-	if id == nil {
-		return ""
-	}
-	return strings.TrimSpace(id.GetValue())
-}
-
-func stringToUuid(value string) *commonv1.Uuid {
-	return &commonv1.Uuid{Value: value}
-}
-
 func orderToGetOrderStatusResponse(order domain.Order) *orderv1.GetOrderStatusResponse {
 	return &orderv1.GetOrderStatusResponse{
-		OrderId:  stringToUuid(order.ID),
-		UserId:   stringToUuid(order.UserID),
-		MarketId: order.MarketID,
-		Side:     orderSideToProto(order.Side),
-		Price:    moneyToProto(order.Price),
-		Quantity: decimalToProto(order.Quantity),
-		Status:   orderStatusToProto(order.Status),
+		OrderId:   order.ID,
+		UserId:    order.UserID,
+		MarketId:  order.MarketID,
+		Side:      orderSideToProto(order.Side),
+		Price:     moneyToProto(order.Price),
+		Quantity:  decimalToProto(order.Quantity),
+		Status:    orderStatusToProto(order.Status),
+		CreatedAt: timestamppb.New(order.CreatedAt),
 	}
 }
 
 func orderUpdateToProto(update application.UpdateEvent) *orderv1.OrderUpdate {
 	return &orderv1.OrderUpdate{
-		OrderId: stringToUuid(update.OrderID),
+		OrderId: update.OrderID,
 		Status:  orderStatusToProto(update.Status),
 	}
+}
+
+func normalizeOrderID(orderID string) string {
+	return strings.TrimSpace(orderID)
 }

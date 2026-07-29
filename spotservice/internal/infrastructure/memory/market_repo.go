@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/exchange-grpc/spotservice/internal/domain"
@@ -35,31 +37,60 @@ func (r *MarketRepository) GetByID(_ context.Context, id string) (domain.Market,
 	return market, nil
 }
 
-// ListActive возвращает включённые рынки.
-func (r *MarketRepository) ListActive(_ context.Context) ([]domain.Market, error) {
+// ListActivePage возвращает страницу активных рынков с RBAC-фильтром и курсором по id.
+func (r *MarketRepository) ListActivePage(_ context.Context, userRoles []string, limit int, afterID string) ([]domain.Market, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	if limit <= 0 {
+		return []domain.Market{}, nil
+	}
+
 	active := make([]domain.Market, 0, len(r.markets))
 	for _, market := range r.markets {
-		if market.IsActive() {
-			active = append(active, market)
+		if !market.IsActive() {
+			continue
 		}
+		if afterID != "" && strings.Compare(market.ID, afterID) <= 0 {
+			continue
+		}
+		if !market.IsAccessibleBy(userRoles) {
+			continue
+		}
+		active = append(active, market)
+	}
+
+	slices.SortFunc(active, func(a, b domain.Market) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+
+	if len(active) > limit {
+		active = active[:limit]
 	}
 	return active, nil
+}
+
+// Ping для in-memory репозитория всегда успешен.
+func (r *MarketRepository) Ping(context.Context) error {
+	return nil
+}
+
+func mustMarket(id, name, base, quote string, enabled bool, allowedRoles ...string) domain.Market {
+	market, err := domain.NewMarket(id, name, base, quote, enabled, allowedRoles)
+	if err != nil {
+		panic(err)
+	}
+	return market
 }
 
 // SeedMarkets возвращает набор рынков: активные и отключённые.
 func SeedMarkets() []domain.Market {
 	return []domain.Market{
-		{ID: "BTC-USDT", Name: "Bitcoin / Tether", BaseAsset: "BTC", QuoteAsset: "USDT", Enabled: true},
-		{ID: "ETH-USDT", Name: "Ethereum / Tether", BaseAsset: "ETH", QuoteAsset: "USDT", Enabled: true},
-		{
-			ID: "BNB-USDT", Name: "BNB / Tether", BaseAsset: "BNB", QuoteAsset: "USDT", Enabled: true,
-			AllowedRoles: []string{"trader", "admin"},
-		},
-		{ID: "SOL-USDT", Name: "Solana / Tether", BaseAsset: "SOL", QuoteAsset: "USDT", Enabled: false},
-		{ID: "XRP-USDT", Name: "Ripple / Tether", BaseAsset: "XRP", QuoteAsset: "USDT", Enabled: false},
+		mustMarket("BTC-USDT", "Bitcoin / Tether", "BTC", "USDT", true),
+		mustMarket("ETH-USDT", "Ethereum / Tether", "ETH", "USDT", true),
+		mustMarket("BNB-USDT", "BNB / Tether", "BNB", "USDT", true, "trader", "admin"),
+		mustMarket("SOL-USDT", "Solana / Tether", "SOL", "USDT", false),
+		mustMarket("XRP-USDT", "Ripple / Tether", "XRP", "USDT", false),
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	v1 "github.com/exchange-grpc/proto/pb/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -103,7 +104,7 @@ func (x *CreateOrderRequest) GetIdempotencyKey() string {
 
 type CreateOrderResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *v1.Uuid               `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	Status        v1.OrderStatus         `protobuf:"varint,2,opt,name=status,proto3,enum=common.v1.OrderStatus" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -139,11 +140,11 @@ func (*CreateOrderResponse) Descriptor() ([]byte, []int) {
 	return file_order_v1_order_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *CreateOrderResponse) GetOrderId() *v1.Uuid {
+func (x *CreateOrderResponse) GetOrderId() string {
 	if x != nil {
 		return x.OrderId
 	}
-	return nil
+	return ""
 }
 
 func (x *CreateOrderResponse) GetStatus() v1.OrderStatus {
@@ -155,7 +156,7 @@ func (x *CreateOrderResponse) GetStatus() v1.OrderStatus {
 
 type GetOrderStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *v1.Uuid               `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -190,22 +191,23 @@ func (*GetOrderStatusRequest) Descriptor() ([]byte, []int) {
 	return file_order_v1_order_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *GetOrderStatusRequest) GetOrderId() *v1.Uuid {
+func (x *GetOrderStatusRequest) GetOrderId() string {
 	if x != nil {
 		return x.OrderId
 	}
-	return nil
+	return ""
 }
 
 type GetOrderStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *v1.Uuid               `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	UserId        *v1.Uuid               `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	MarketId      string                 `protobuf:"bytes,3,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"`
 	Side          v1.OrderSide           `protobuf:"varint,4,opt,name=side,proto3,enum=common.v1.OrderSide" json:"side,omitempty"`
 	Price         *v1.Money              `protobuf:"bytes,5,opt,name=price,proto3" json:"price,omitempty"`
 	Quantity      *v1.Decimal            `protobuf:"bytes,6,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	Status        v1.OrderStatus         `protobuf:"varint,7,opt,name=status,proto3,enum=common.v1.OrderStatus" json:"status,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -240,18 +242,18 @@ func (*GetOrderStatusResponse) Descriptor() ([]byte, []int) {
 	return file_order_v1_order_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *GetOrderStatusResponse) GetOrderId() *v1.Uuid {
+func (x *GetOrderStatusResponse) GetOrderId() string {
 	if x != nil {
 		return x.OrderId
 	}
-	return nil
+	return ""
 }
 
-func (x *GetOrderStatusResponse) GetUserId() *v1.Uuid {
+func (x *GetOrderStatusResponse) GetUserId() string {
 	if x != nil {
 		return x.UserId
 	}
-	return nil
+	return ""
 }
 
 func (x *GetOrderStatusResponse) GetMarketId() string {
@@ -287,6 +289,13 @@ func (x *GetOrderStatusResponse) GetStatus() v1.OrderStatus {
 		return x.Status
 	}
 	return v1.OrderStatus(0)
+}
+
+func (x *GetOrderStatusResponse) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
 }
 
 // ListOrdersRequest — список ордеров текущего пользователя (user_id из JWT).
@@ -388,12 +397,13 @@ func (x *ListOrdersResponse) GetPageInfo() *v1.CursorPageInfo {
 
 type OrderSummary struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *v1.Uuid               `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	MarketId      string                 `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"`
 	Side          v1.OrderSide           `protobuf:"varint,3,opt,name=side,proto3,enum=common.v1.OrderSide" json:"side,omitempty"`
 	Price         *v1.Money              `protobuf:"bytes,4,opt,name=price,proto3" json:"price,omitempty"`
 	Quantity      *v1.Decimal            `protobuf:"bytes,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	Status        v1.OrderStatus         `protobuf:"varint,6,opt,name=status,proto3,enum=common.v1.OrderStatus" json:"status,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -428,11 +438,11 @@ func (*OrderSummary) Descriptor() ([]byte, []int) {
 	return file_order_v1_order_service_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *OrderSummary) GetOrderId() *v1.Uuid {
+func (x *OrderSummary) GetOrderId() string {
 	if x != nil {
 		return x.OrderId
 	}
-	return nil
+	return ""
 }
 
 func (x *OrderSummary) GetMarketId() string {
@@ -470,9 +480,16 @@ func (x *OrderSummary) GetStatus() v1.OrderStatus {
 	return v1.OrderStatus(0)
 }
 
+func (x *OrderSummary) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
 type StreamOrderUpdatesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *v1.Uuid               `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -507,16 +524,16 @@ func (*StreamOrderUpdatesRequest) Descriptor() ([]byte, []int) {
 	return file_order_v1_order_service_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *StreamOrderUpdatesRequest) GetOrderId() *v1.Uuid {
+func (x *StreamOrderUpdatesRequest) GetOrderId() string {
 	if x != nil {
 		return x.OrderId
 	}
-	return nil
+	return ""
 }
 
 type OrderUpdate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *v1.Uuid               `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	Status        v1.OrderStatus         `protobuf:"varint,2,opt,name=status,proto3,enum=common.v1.OrderStatus" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -552,11 +569,11 @@ func (*OrderUpdate) Descriptor() ([]byte, []int) {
 	return file_order_v1_order_service_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *OrderUpdate) GetOrderId() *v1.Uuid {
+func (x *OrderUpdate) GetOrderId() string {
 	if x != nil {
 		return x.OrderId
 	}
-	return nil
+	return ""
 }
 
 func (x *OrderUpdate) GetStatus() v1.OrderStatus {
@@ -570,45 +587,49 @@ var File_order_v1_order_service_proto protoreflect.FileDescriptor
 
 const file_order_v1_order_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1corder/v1/order_service.proto\x12\border.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17common/v1/decimal.proto\x1a\x15common/v1/money.proto\x1a\x1acommon/v1/order_side.proto\x1a\x1ccommon/v1/order_status.proto\x1a\x1acommon/v1/pagination.proto\x1a\x14common/v1/uuid.proto\"\xfb\x01\n" +
+	"\x1corder/v1/order_service.proto\x12\border.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17common/v1/decimal.proto\x1a\x15common/v1/money.proto\x1a\x1acommon/v1/order_side.proto\x1a\x1ccommon/v1/order_status.proto\x1a\x1acommon/v1/pagination.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfb\x01\n" +
 	"\x12CreateOrderRequest\x12$\n" +
 	"\tmarket_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bmarketId\x124\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x14.common.v1.OrderSideB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\x04side\x12&\n" +
 	"\x05price\x18\x03 \x01(\v2\x10.common.v1.MoneyR\x05price\x12.\n" +
 	"\bquantity\x18\x04 \x01(\v2\x12.common.v1.DecimalR\bquantity\x121\n" +
-	"\x0fidempotency_key\x18\x05 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\x0eidempotencyKey\"q\n" +
-	"\x13CreateOrderResponse\x12*\n" +
-	"\border_id\x18\x01 \x01(\v2\x0f.common.v1.UuidR\aorderId\x12.\n" +
-	"\x06status\x18\x02 \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\"C\n" +
-	"\x15GetOrderStatusRequest\x12*\n" +
-	"\border_id\x18\x01 \x01(\v2\x0f.common.v1.UuidR\aorderId\"\xbd\x02\n" +
-	"\x16GetOrderStatusResponse\x12*\n" +
-	"\border_id\x18\x01 \x01(\v2\x0f.common.v1.UuidR\aorderId\x12(\n" +
-	"\auser_id\x18\x02 \x01(\v2\x0f.common.v1.UuidR\x06userId\x12\x1b\n" +
+	"\x0fidempotency_key\x18\x05 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\x0eidempotencyKey\"j\n" +
+	"\x13CreateOrderResponse\x12#\n" +
+	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\x12.\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\"<\n" +
+	"\x15GetOrderStatusRequest\x12#\n" +
+	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\"\xea\x02\n" +
+	"\x16GetOrderStatusResponse\x12#\n" +
+	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\x12!\n" +
+	"\auser_id\x18\x02 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x06userId\x12\x1b\n" +
 	"\tmarket_id\x18\x03 \x01(\tR\bmarketId\x12(\n" +
 	"\x04side\x18\x04 \x01(\x0e2\x14.common.v1.OrderSideR\x04side\x12&\n" +
 	"\x05price\x18\x05 \x01(\v2\x10.common.v1.MoneyR\x05price\x12.\n" +
 	"\bquantity\x18\x06 \x01(\v2\x12.common.v1.DecimalR\bquantity\x12.\n" +
-	"\x06status\x18\a \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\"P\n" +
+	"\x06status\x18\a \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"P\n" +
 	"\x11ListOrdersRequest\x12;\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1b.common.v1.CursorPaginationR\n" +
 	"pagination\"|\n" +
 	"\x12ListOrdersResponse\x12.\n" +
 	"\x06orders\x18\x01 \x03(\v2\x16.order.v1.OrderSummaryR\x06orders\x126\n" +
-	"\tpage_info\x18\x02 \x01(\v2\x19.common.v1.CursorPageInfoR\bpageInfo\"\x89\x02\n" +
-	"\fOrderSummary\x12*\n" +
-	"\border_id\x18\x01 \x01(\v2\x0f.common.v1.UuidR\aorderId\x12\x1b\n" +
+	"\tpage_info\x18\x02 \x01(\v2\x19.common.v1.CursorPageInfoR\bpageInfo\"\xbd\x02\n" +
+	"\fOrderSummary\x12#\n" +
+	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\x12\x1b\n" +
 	"\tmarket_id\x18\x02 \x01(\tR\bmarketId\x12(\n" +
 	"\x04side\x18\x03 \x01(\x0e2\x14.common.v1.OrderSideR\x04side\x12&\n" +
 	"\x05price\x18\x04 \x01(\v2\x10.common.v1.MoneyR\x05price\x12.\n" +
 	"\bquantity\x18\x05 \x01(\v2\x12.common.v1.DecimalR\bquantity\x12.\n" +
-	"\x06status\x18\x06 \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\"G\n" +
-	"\x19StreamOrderUpdatesRequest\x12*\n" +
-	"\border_id\x18\x01 \x01(\v2\x0f.common.v1.UuidR\aorderId\"i\n" +
-	"\vOrderUpdate\x12*\n" +
-	"\border_id\x18\x01 \x01(\v2\x0f.common.v1.UuidR\aorderId\x12.\n" +
+	"\x06status\x18\x06 \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\x129\n" +
+	"\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"@\n" +
+	"\x19StreamOrderUpdatesRequest\x12#\n" +
+	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\"b\n" +
+	"\vOrderUpdate\x12#\n" +
+	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\x12.\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x16.common.v1.OrderStatusR\x06status2\xcc\x02\n" +
 	"\fOrderService\x12J\n" +
 	"\vCreateOrder\x12\x1c.order.v1.CreateOrderRequest\x1a\x1d.order.v1.CreateOrderResponse\x12S\n" +
@@ -643,8 +664,8 @@ var file_order_v1_order_service_proto_goTypes = []any{
 	(v1.OrderSide)(0),                 // 9: common.v1.OrderSide
 	(*v1.Money)(nil),                  // 10: common.v1.Money
 	(*v1.Decimal)(nil),                // 11: common.v1.Decimal
-	(*v1.Uuid)(nil),                   // 12: common.v1.Uuid
-	(v1.OrderStatus)(0),               // 13: common.v1.OrderStatus
+	(v1.OrderStatus)(0),               // 12: common.v1.OrderStatus
+	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
 	(*v1.CursorPagination)(nil),       // 14: common.v1.CursorPagination
 	(*v1.CursorPageInfo)(nil),         // 15: common.v1.CursorPageInfo
 }
@@ -652,39 +673,34 @@ var file_order_v1_order_service_proto_depIdxs = []int32{
 	9,  // 0: order.v1.CreateOrderRequest.side:type_name -> common.v1.OrderSide
 	10, // 1: order.v1.CreateOrderRequest.price:type_name -> common.v1.Money
 	11, // 2: order.v1.CreateOrderRequest.quantity:type_name -> common.v1.Decimal
-	12, // 3: order.v1.CreateOrderResponse.order_id:type_name -> common.v1.Uuid
-	13, // 4: order.v1.CreateOrderResponse.status:type_name -> common.v1.OrderStatus
-	12, // 5: order.v1.GetOrderStatusRequest.order_id:type_name -> common.v1.Uuid
-	12, // 6: order.v1.GetOrderStatusResponse.order_id:type_name -> common.v1.Uuid
-	12, // 7: order.v1.GetOrderStatusResponse.user_id:type_name -> common.v1.Uuid
-	9,  // 8: order.v1.GetOrderStatusResponse.side:type_name -> common.v1.OrderSide
-	10, // 9: order.v1.GetOrderStatusResponse.price:type_name -> common.v1.Money
-	11, // 10: order.v1.GetOrderStatusResponse.quantity:type_name -> common.v1.Decimal
-	13, // 11: order.v1.GetOrderStatusResponse.status:type_name -> common.v1.OrderStatus
-	14, // 12: order.v1.ListOrdersRequest.pagination:type_name -> common.v1.CursorPagination
-	6,  // 13: order.v1.ListOrdersResponse.orders:type_name -> order.v1.OrderSummary
-	15, // 14: order.v1.ListOrdersResponse.page_info:type_name -> common.v1.CursorPageInfo
-	12, // 15: order.v1.OrderSummary.order_id:type_name -> common.v1.Uuid
-	9,  // 16: order.v1.OrderSummary.side:type_name -> common.v1.OrderSide
-	10, // 17: order.v1.OrderSummary.price:type_name -> common.v1.Money
-	11, // 18: order.v1.OrderSummary.quantity:type_name -> common.v1.Decimal
-	13, // 19: order.v1.OrderSummary.status:type_name -> common.v1.OrderStatus
-	12, // 20: order.v1.StreamOrderUpdatesRequest.order_id:type_name -> common.v1.Uuid
-	12, // 21: order.v1.OrderUpdate.order_id:type_name -> common.v1.Uuid
-	13, // 22: order.v1.OrderUpdate.status:type_name -> common.v1.OrderStatus
-	0,  // 23: order.v1.OrderService.CreateOrder:input_type -> order.v1.CreateOrderRequest
-	2,  // 24: order.v1.OrderService.GetOrderStatus:input_type -> order.v1.GetOrderStatusRequest
-	4,  // 25: order.v1.OrderService.ListOrders:input_type -> order.v1.ListOrdersRequest
-	7,  // 26: order.v1.OrderService.StreamOrderUpdates:input_type -> order.v1.StreamOrderUpdatesRequest
-	1,  // 27: order.v1.OrderService.CreateOrder:output_type -> order.v1.CreateOrderResponse
-	3,  // 28: order.v1.OrderService.GetOrderStatus:output_type -> order.v1.GetOrderStatusResponse
-	5,  // 29: order.v1.OrderService.ListOrders:output_type -> order.v1.ListOrdersResponse
-	8,  // 30: order.v1.OrderService.StreamOrderUpdates:output_type -> order.v1.OrderUpdate
-	27, // [27:31] is the sub-list for method output_type
-	23, // [23:27] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	12, // 3: order.v1.CreateOrderResponse.status:type_name -> common.v1.OrderStatus
+	9,  // 4: order.v1.GetOrderStatusResponse.side:type_name -> common.v1.OrderSide
+	10, // 5: order.v1.GetOrderStatusResponse.price:type_name -> common.v1.Money
+	11, // 6: order.v1.GetOrderStatusResponse.quantity:type_name -> common.v1.Decimal
+	12, // 7: order.v1.GetOrderStatusResponse.status:type_name -> common.v1.OrderStatus
+	13, // 8: order.v1.GetOrderStatusResponse.created_at:type_name -> google.protobuf.Timestamp
+	14, // 9: order.v1.ListOrdersRequest.pagination:type_name -> common.v1.CursorPagination
+	6,  // 10: order.v1.ListOrdersResponse.orders:type_name -> order.v1.OrderSummary
+	15, // 11: order.v1.ListOrdersResponse.page_info:type_name -> common.v1.CursorPageInfo
+	9,  // 12: order.v1.OrderSummary.side:type_name -> common.v1.OrderSide
+	10, // 13: order.v1.OrderSummary.price:type_name -> common.v1.Money
+	11, // 14: order.v1.OrderSummary.quantity:type_name -> common.v1.Decimal
+	12, // 15: order.v1.OrderSummary.status:type_name -> common.v1.OrderStatus
+	13, // 16: order.v1.OrderSummary.created_at:type_name -> google.protobuf.Timestamp
+	12, // 17: order.v1.OrderUpdate.status:type_name -> common.v1.OrderStatus
+	0,  // 18: order.v1.OrderService.CreateOrder:input_type -> order.v1.CreateOrderRequest
+	2,  // 19: order.v1.OrderService.GetOrderStatus:input_type -> order.v1.GetOrderStatusRequest
+	4,  // 20: order.v1.OrderService.ListOrders:input_type -> order.v1.ListOrdersRequest
+	7,  // 21: order.v1.OrderService.StreamOrderUpdates:input_type -> order.v1.StreamOrderUpdatesRequest
+	1,  // 22: order.v1.OrderService.CreateOrder:output_type -> order.v1.CreateOrderResponse
+	3,  // 23: order.v1.OrderService.GetOrderStatus:output_type -> order.v1.GetOrderStatusResponse
+	5,  // 24: order.v1.OrderService.ListOrders:output_type -> order.v1.ListOrdersResponse
+	8,  // 25: order.v1.OrderService.StreamOrderUpdates:output_type -> order.v1.OrderUpdate
+	22, // [22:26] is the sub-list for method output_type
+	18, // [18:22] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_order_v1_order_service_proto_init() }

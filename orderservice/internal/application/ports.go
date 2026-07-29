@@ -20,3 +20,9 @@ type CreateOrderRateLimiter interface {
 type OrderNotifier interface {
 	Publish(orderID string, status domain.OrderStatus)
 }
+
+// OrderUpdateHub — pub/sub обновлений ордеров для streaming.
+type OrderUpdateHub interface {
+	OrderNotifier
+	Subscribe(orderID string) (<-chan UpdateEvent, func())
+}

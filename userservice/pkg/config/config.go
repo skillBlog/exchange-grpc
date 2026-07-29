@@ -15,6 +15,9 @@ const (
 	defaultMigrationsDir    = "migrations"
 	defaultLoginRateLimit   = 5
 	defaultLoginRateWindow  = time.Minute
+	defaultRedisURL         = "redis://localhost:6379/0"
+	defaultRedisPoolSize    = 10
+	defaultRedisMaxRetries  = 3
 )
 
 // Config содержит runtime-конфигурацию userservice.
@@ -27,6 +30,10 @@ type Config struct {
 	MigrationsDir    string
 	LoginRateLimit   int
 	LoginRateWindow  time.Duration
+	RedisURL         string
+	RedisPoolSize    int
+	RedisMaxRetries  int
+	LogLevelAddr     string
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
@@ -40,6 +47,10 @@ func LoadConfig() Config {
 		MigrationsDir:   envOrDefault("USER_MIGRATIONS_DIR", defaultMigrationsDir),
 		LoginRateLimit:  envIntOrDefault("LOGIN_RATE_LIMIT", defaultLoginRateLimit),
 		LoginRateWindow: envDurationOrDefault("LOGIN_RATE_WINDOW", defaultLoginRateWindow),
+		RedisURL:        envOrDefault("REDIS_URL", defaultRedisURL),
+		RedisPoolSize:   envIntOrDefault("REDIS_POOL_SIZE", defaultRedisPoolSize),
+		RedisMaxRetries: envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
+		LogLevelAddr:    os.Getenv("LOG_LEVEL_ADDR"),
 	}
 }
 

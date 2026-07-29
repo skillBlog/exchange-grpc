@@ -9,28 +9,43 @@ import (
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/memory"
 )
 
-func TestMarketRepository_cachesListActive(t *testing.T) {
+func TestMarketRepository_cachesGetByID(t *testing.T) {
 	inner := memory.NewSeededMarketRepository()
 	repo := cache.NewMarketRepository(inner, time.Minute)
 
-	first, err := repo.ListActive(context.Background())
+	first, err := repo.GetByID(context.Background(), "BTC-USDT")
 	if err != nil {
-		t.Fatalf("first ListActive() error = %v", err)
+		t.Fatalf("first GetByID() error = %v", err)
+	}
+	if first.ID != "BTC-USDT" {
+		t.Fatalf("id = %q", first.ID)
 	}
 
-	// Меняем in-memory данные напрямую — кеш должен вернуть старый список.
-	innerRepo := memory.NewMarketRepository()
-	cached := cache.NewMarketRepository(innerRepo, time.Minute)
-	if _, err := cached.ListActive(context.Background()); err != nil {
-		t.Fatalf("cached ListActive() error = %v", err)
-	}
-
-	second, err := cached.ListActive(context.Background())
+	second, err := repo.GetByID(context.Background(), "BTC-USDT")
 	if err != nil {
-		t.Fatalf("second ListActive() error = %v", err)
+		t.Fatalf("second GetByID() error = %v", err)
 	}
-	if len(second) != 0 {
-		t.Fatalf("expected cached empty list, got %d markets", len(second))
+	if second.ID != first.ID {
+		t.Fatalf("cached id mismatch: %q vs %q", second.ID, first.ID)
 	}
-	_ = first
+}
+
+func TestMarketRepository_listActivePagePassesThrough(t *testing.T) {
+	inner := memory.NewSeededMarketRepository()
+	repo := cache.NewMarketRepository(inner, time.Minute)
+
+	page, err := repo.ListActivePage(context.Background(), []string{"trader"}, 2, "")
+	if err != nil {
+		t.Fatalf("ListActivePage() error = %v", err)
+	}
+	if len(page) != 2 {
+		t.Fatalf("page size = %d, want 2", len(page))
+	}
+}
+
+func TestMarketRepository_pingDelegates(t *testing.T) {
+	repo := cache.NewMarketRepository(memory.NewSeededMarketRepository(), time.Minute)
+	if err := repo.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping() error = %v", err)
+	}
 }

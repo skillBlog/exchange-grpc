@@ -36,15 +36,38 @@ func (s *IdempotencyStore) GetOrderID(ctx context.Context, userID, key string) (
 	return orderID, true, nil
 }
 
-// Save сохраняет idempotency key.
-func (s *IdempotencyStore) Save(ctx context.Context, userID, key, orderID string) error {
-	_, err := s.db.Pool.Exec(ctx, `
+// Reserve резервирует idempotency key до создания ордера.
+func (s *IdempotencyStore) Reserve(ctx context.Context, userID, key, orderID string) (bool, string, error) {
+	tag, err := s.db.Pool.Exec(ctx, `
 		INSERT INTO idempotency_keys (user_id, idempotency_key, order_id)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (user_id, idempotency_key) DO NOTHING
 	`, userID, key, orderID)
 	if err != nil {
-		return fmt.Errorf("save idempotency key: %w", err)
+		return false, "", fmt.Errorf("reserve idempotency key: %w", err)
+	}
+	if tag.RowsAffected() == 1 {
+		return true, "", nil
+	}
+
+	existingOrderID, found, err := s.GetOrderID(ctx, userID, key)
+	if err != nil {
+		return false, "", err
+	}
+	if !found {
+		return false, "", fmt.Errorf("reserve idempotency key: conflict without existing row")
+	}
+	return false, existingOrderID, nil
+}
+
+// Release снимает резерв idempotency key после неудачного Create.
+func (s *IdempotencyStore) Release(ctx context.Context, userID, key string) error {
+	_, err := s.db.Pool.Exec(ctx, `
+		DELETE FROM idempotency_keys
+		WHERE user_id = $1 AND idempotency_key = $2
+	`, userID, key)
+	if err != nil {
+		return fmt.Errorf("release idempotency key: %w", err)
 	}
 	return nil
 }

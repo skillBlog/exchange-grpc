@@ -15,7 +15,7 @@ import (
 const (
 	// MetadataAuthorization — стандартный заголовок Bearer JWT.
 	MetadataAuthorization = "authorization"
-	bearerPrefix          = "Bearer "
+	bearerPrefix          = "bearer "
 )
 
 // NewUnaryServerJWTAuth проверяет JWT и кладёт user_id/roles в контекст.
@@ -60,17 +60,17 @@ func enrichContextFromJWT(ctx context.Context, tokens *sessionvalidation.TokenSe
 		return ctx, status.Error(codes.Unauthenticated, "authorization is required")
 	}
 
-	values := md.Get(MetadataAuthorization)
-	if len(values) == 0 || strings.TrimSpace(values[0]) == "" {
+	raw, ok := firstAuthorizationValue(md)
+	if !ok {
 		return ctx, status.Error(codes.Unauthenticated, "authorization is required")
 	}
 
-	raw := strings.TrimSpace(values[0])
-	if !strings.HasPrefix(raw, bearerPrefix) {
+	token, ok := parseBearerToken(raw)
+	if !ok {
 		return ctx, status.Error(codes.Unauthenticated, "authorization must use Bearer scheme")
 	}
 
-	claims, err := tokens.Validate(strings.TrimPrefix(raw, bearerPrefix))
+	claims, err := tokens.Validate(token)
 	if err != nil {
 		return ctx, status.Error(codes.Unauthenticated, "invalid or expired token")
 	}
@@ -80,9 +80,40 @@ func enrichContextFromJWT(ctx context.Context, tokens *sessionvalidation.TokenSe
 	return ctx, nil
 }
 
+// firstAuthorizationValue читает authorization metadata без зависимости от регистра ключа.
+func firstAuthorizationValue(md metadata.MD) (string, bool) {
+	if md == nil {
+		return "", false
+	}
+	for key, values := range md {
+		if !strings.EqualFold(strings.TrimSpace(key), MetadataAuthorization) {
+			continue
+		}
+		for _, value := range values {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				return trimmed, true
+			}
+		}
+	}
+	return "", false
+}
+
+// parseBearerToken принимает Bearer/bearer/BEARER и возвращает JWT.
+func parseBearerToken(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < len(bearerPrefix) {
+		return "", false
+	}
+	if !strings.EqualFold(raw[:len(bearerPrefix)], bearerPrefix) {
+		return "", false
+	}
+	token := strings.TrimSpace(raw[len(bearerPrefix):])
+	return token, token != ""
+}
+
 // OutgoingContextWithBearer добавляет Bearer JWT в исходящий gRPC metadata.
 func OutgoingContextWithBearer(ctx context.Context, accessToken string) context.Context {
-	md := metadata.Pairs(MetadataAuthorization, bearerPrefix+strings.TrimSpace(accessToken))
+	md := metadata.Pairs(MetadataAuthorization, "Bearer "+strings.TrimSpace(accessToken))
 	if existing, ok := metadata.FromOutgoingContext(ctx); ok {
 		md = metadata.Join(existing, md)
 	}
@@ -99,18 +130,22 @@ func UnaryClientForwardAuthorization(
 	opts ...grpc.CallOption,
 ) error {
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
-		if values := md.Get(MetadataAuthorization); len(values) > 0 && strings.TrimSpace(values[0]) != "" {
+		if _, found := firstAuthorizationValue(md); found {
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}
 	}
 
 	if inMD, ok := metadata.FromIncomingContext(ctx); ok {
-		if values := inMD.Get(MetadataAuthorization); len(values) > 0 && strings.TrimSpace(values[0]) != "" {
-			outMD := metadata.Pairs(MetadataAuthorization, values[0])
-			if existing, ok := metadata.FromOutgoingContext(ctx); ok {
-				outMD = metadata.Join(existing, outMD)
+		if raw, found := firstAuthorizationValue(inMD); found {
+			if token, ok := parseBearerToken(raw); ok {
+				ctx = OutgoingContextWithBearer(ctx, token)
+			} else {
+				outMD := metadata.Pairs(MetadataAuthorization, raw)
+				if existing, ok := metadata.FromOutgoingContext(ctx); ok {
+					outMD = metadata.Join(existing, outMD)
+				}
+				ctx = metadata.NewOutgoingContext(ctx, outMD)
 			}
-			ctx = metadata.NewOutgoingContext(ctx, outMD)
 		}
 	}
 

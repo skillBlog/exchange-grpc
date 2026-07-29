@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,16 +63,32 @@ func (r *OrderRepository) GetByIDAndUserID(_ context.Context, orderID, userID st
 	return order, nil
 }
 
-// ListByUserID возвращает все ордера пользователя.
-func (r *OrderRepository) ListByUserID(_ context.Context, userID string) ([]domain.Order, error) {
+// ListByUserID возвращает страницу ордеров пользователя по курсору id.
+func (r *OrderRepository) ListByUserID(_ context.Context, userID string, limit int, afterID string) ([]domain.Order, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	if limit <= 0 {
+		return []domain.Order{}, nil
+	}
+
 	result := make([]domain.Order, 0)
 	for _, order := range r.orders {
-		if order.UserID == userID {
-			result = append(result, order)
+		if order.UserID != userID {
+			continue
 		}
+		if afterID != "" && strings.Compare(order.ID, afterID) <= 0 {
+			continue
+		}
+		result = append(result, order)
+	}
+
+	slices.SortFunc(result, func(a, b domain.Order) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+
+	if len(result) > limit {
+		result = result[:limit]
 	}
 	return result, nil
 }
@@ -114,11 +132,24 @@ func (s *IdempotencyStore) GetOrderID(_ context.Context, userID, key string) (st
 	return orderID, ok, nil
 }
 
-// Save сохраняет idempotency key.
-func (s *IdempotencyStore) Save(_ context.Context, userID, key, orderID string) error {
+// Reserve резервирует idempotency key под orderID.
+func (s *IdempotencyStore) Reserve(_ context.Context, userID, key, orderID string) (bool, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.keys[idempotencyMapKey(userID, key)] = orderID
+
+	mapKey := idempotencyMapKey(userID, key)
+	if existing, ok := s.keys[mapKey]; ok {
+		return false, existing, nil
+	}
+	s.keys[mapKey] = orderID
+	return true, "", nil
+}
+
+// Release снимает резерв idempotency key.
+func (s *IdempotencyStore) Release(_ context.Context, userID, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.keys, idempotencyMapKey(userID, key))
 	return nil
 }
 

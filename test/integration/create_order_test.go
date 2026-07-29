@@ -75,7 +75,7 @@ func TestCreateOrder_SucceedsForActiveMarket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateOrder() error = %v", err)
 	}
-	if resp.GetOrderId().GetValue() == "" || resp.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_CREATED {
+	if resp.GetOrderId() == "" || resp.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_CREATED {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }

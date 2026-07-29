@@ -4,17 +4,30 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/exchange-grpc/shared/roles"
+	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/userservice/internal/application"
 	"github.com/exchange-grpc/userservice/internal/domain"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/memory"
+	"github.com/exchange-grpc/userservice/internal/infrastructure/tokens"
 )
+
+func newRegisterUC(t *testing.T, repo domain.UserRepository) *application.Register {
+	t.Helper()
+	accessTokens, err := sessionvalidation.NewTokenService("test-secret", time.Hour)
+	if err != nil {
+		t.Fatalf("NewTokenService() error = %v", err)
+	}
+	refreshTokens := tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
+	return application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+}
 
 func TestRegister_success(t *testing.T) {
 	repo := memory.NewUserRepository()
-	uc := application.NewRegister(repo, bcrypt.NewHasher())
+	uc := newRegisterUC(t, repo)
 
 	out, err := uc.Execute(context.Background(), application.RegisterInput{
 		Email:    "user@example.com",
@@ -25,6 +38,9 @@ func TestRegister_success(t *testing.T) {
 	}
 	if out.UserID == "" {
 		t.Fatal("expected user id")
+	}
+	if out.AccessToken == "" || out.RefreshToken == "" {
+		t.Fatal("expected access and refresh tokens")
 	}
 
 	user, err := repo.GetByEmail(context.Background(), "user@example.com")
@@ -38,7 +54,7 @@ func TestRegister_success(t *testing.T) {
 
 func TestRegister_duplicateEmail(t *testing.T) {
 	repo := memory.NewUserRepository()
-	uc := application.NewRegister(repo, bcrypt.NewHasher())
+	uc := newRegisterUC(t, repo)
 
 	input := application.RegisterInput{
 		Email:    "dup@example.com",
@@ -55,7 +71,7 @@ func TestRegister_duplicateEmail(t *testing.T) {
 }
 
 func TestRegister_shortPassword(t *testing.T) {
-	uc := application.NewRegister(memory.NewUserRepository(), bcrypt.NewHasher())
+	uc := newRegisterUC(t, memory.NewUserRepository())
 
 	_, err := uc.Execute(context.Background(), application.RegisterInput{
 		Email:    "user@example.com",
@@ -67,7 +83,7 @@ func TestRegister_shortPassword(t *testing.T) {
 }
 
 func TestRegister_weakPassword(t *testing.T) {
-	uc := application.NewRegister(memory.NewUserRepository(), bcrypt.NewHasher())
+	uc := newRegisterUC(t, memory.NewUserRepository())
 
 	_, err := uc.Execute(context.Background(), application.RegisterInput{
 		Email:    "user@example.com",

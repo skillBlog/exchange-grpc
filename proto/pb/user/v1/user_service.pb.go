@@ -8,6 +8,7 @@ package userv1
 
 import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
+	v1 "github.com/exchange-grpc/proto/pb/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -77,6 +78,8 @@ func (x *RegisterRequest) GetPassword() string {
 type RegisterResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AccessToken   string                 `protobuf:"bytes,2,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken  string                 `protobuf:"bytes,3,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -114,6 +117,20 @@ func (*RegisterResponse) Descriptor() ([]byte, []int) {
 func (x *RegisterResponse) GetUserId() string {
 	if x != nil {
 		return x.UserId
+	}
+	return ""
+}
+
+func (x *RegisterResponse) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *RegisterResponse) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
 	}
 	return ""
 }
@@ -269,6 +286,7 @@ func (x *RefreshTokenRequest) GetRefreshToken() string {
 type RefreshTokenResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -306,6 +324,13 @@ func (*RefreshTokenResponse) Descriptor() ([]byte, []int) {
 func (x *RefreshTokenResponse) GetAccessToken() string {
 	if x != nil {
 		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *RefreshTokenResponse) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
 	}
 	return ""
 }
@@ -351,7 +376,7 @@ type GetUserResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
-	Roles         []string               `protobuf:"bytes,3,rep,name=roles,proto3" json:"roles,omitempty"`
+	Roles         []v1.Role              `protobuf:"varint,3,rep,packed,name=roles,proto3,enum=common.v1.Role" json:"roles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -400,7 +425,7 @@ func (x *GetUserResponse) GetEmail() string {
 	return ""
 }
 
-func (x *GetUserResponse) GetRoles() []string {
+func (x *GetUserResponse) GetRoles() []v1.Role {
 	if x != nil {
 		return x.Roles
 	}
@@ -491,14 +516,16 @@ var File_user_v1_user_service_proto protoreflect.FileDescriptor
 
 const file_user_v1_user_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1auser/v1/user_service.proto\x12\auser.v1\x1a\x1bbuf/validate/validate.proto\"[\n" +
+	"\x1auser/v1/user_service.proto\x12\auser.v1\x1a\x1bbuf/validate/validate.proto\x1a\x14common/v1/role.proto\"[\n" +
 	"\x0fRegisterRequest\x12 \n" +
 	"\x05email\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x18\xfe\x01`\x01R\x05email\x12&\n" +
 	"\bpassword\x18\x02 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\b\x18\x80\x01R\bpassword\"5\n" +
+	"\xbaH\ar\x05\x10\b\x18\x80\x01R\bpassword\"\x86\x01\n" +
 	"\x10RegisterResponse\x12!\n" +
-	"\auser_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x06userId\"X\n" +
+	"\auser_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x06userId\x12*\n" +
+	"\faccess_token\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x03 \x01(\tR\frefreshToken\"X\n" +
 	"\fLoginRequest\x12 \n" +
 	"\x05email\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x18\xfe\x01`\x01R\x05email\x12&\n" +
@@ -508,14 +535,15 @@ const file_user_v1_user_service_proto_rawDesc = "" +
 	"\faccess_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"C\n" +
 	"\x13RefreshTokenRequest\x12,\n" +
-	"\rrefresh_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\frefreshToken\"B\n" +
+	"\rrefresh_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\frefreshToken\"p\n" +
 	"\x14RefreshTokenResponse\x12*\n" +
-	"\faccess_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vaccessToken\"\x10\n" +
-	"\x0eGetUserRequest\"i\n" +
+	"\faccess_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vaccessToken\x12,\n" +
+	"\rrefresh_token\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\frefreshToken\"\x10\n" +
+	"\x0eGetUserRequest\"\x8b\x01\n" +
 	"\x0fGetUserResponse\x12!\n" +
 	"\auser_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x06userId\x12\x1d\n" +
-	"\x05email\x18\x02 \x01(\tB\a\xbaH\x04r\x02`\x01R\x05email\x12\x14\n" +
-	"\x05roles\x18\x03 \x03(\tR\x05roles\"=\n" +
+	"\x05email\x18\x02 \x01(\tB\a\xbaH\x04r\x02`\x01R\x05email\x126\n" +
+	"\x05roles\x18\x03 \x03(\x0e2\x0f.common.v1.RoleB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\x05roles\"=\n" +
 	"\rLogoutRequest\x12,\n" +
 	"\rrefresh_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\frefreshToken\"\x10\n" +
 	"\x0eLogoutResponse2\xcc\x02\n" +
@@ -550,23 +578,25 @@ var file_user_v1_user_service_proto_goTypes = []any{
 	(*GetUserResponse)(nil),      // 7: user.v1.GetUserResponse
 	(*LogoutRequest)(nil),        // 8: user.v1.LogoutRequest
 	(*LogoutResponse)(nil),       // 9: user.v1.LogoutResponse
+	(v1.Role)(0),                 // 10: common.v1.Role
 }
 var file_user_v1_user_service_proto_depIdxs = []int32{
-	0, // 0: user.v1.UserService.Register:input_type -> user.v1.RegisterRequest
-	2, // 1: user.v1.UserService.Login:input_type -> user.v1.LoginRequest
-	4, // 2: user.v1.UserService.RefreshToken:input_type -> user.v1.RefreshTokenRequest
-	6, // 3: user.v1.UserService.GetUser:input_type -> user.v1.GetUserRequest
-	8, // 4: user.v1.UserService.Logout:input_type -> user.v1.LogoutRequest
-	1, // 5: user.v1.UserService.Register:output_type -> user.v1.RegisterResponse
-	3, // 6: user.v1.UserService.Login:output_type -> user.v1.LoginResponse
-	5, // 7: user.v1.UserService.RefreshToken:output_type -> user.v1.RefreshTokenResponse
-	7, // 8: user.v1.UserService.GetUser:output_type -> user.v1.GetUserResponse
-	9, // 9: user.v1.UserService.Logout:output_type -> user.v1.LogoutResponse
-	5, // [5:10] is the sub-list for method output_type
-	0, // [0:5] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	10, // 0: user.v1.GetUserResponse.roles:type_name -> common.v1.Role
+	0,  // 1: user.v1.UserService.Register:input_type -> user.v1.RegisterRequest
+	2,  // 2: user.v1.UserService.Login:input_type -> user.v1.LoginRequest
+	4,  // 3: user.v1.UserService.RefreshToken:input_type -> user.v1.RefreshTokenRequest
+	6,  // 4: user.v1.UserService.GetUser:input_type -> user.v1.GetUserRequest
+	8,  // 5: user.v1.UserService.Logout:input_type -> user.v1.LogoutRequest
+	1,  // 6: user.v1.UserService.Register:output_type -> user.v1.RegisterResponse
+	3,  // 7: user.v1.UserService.Login:output_type -> user.v1.LoginResponse
+	5,  // 8: user.v1.UserService.RefreshToken:output_type -> user.v1.RefreshTokenResponse
+	7,  // 9: user.v1.UserService.GetUser:output_type -> user.v1.GetUserResponse
+	9,  // 10: user.v1.UserService.Logout:output_type -> user.v1.LogoutResponse
+	6,  // [6:11] is the sub-list for method output_type
+	1,  // [1:6] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_user_v1_user_service_proto_init() }

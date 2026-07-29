@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
 )
 
@@ -31,7 +32,10 @@ func NewGetUser(users domain.UserRepository) *GetUser {
 }
 
 // Execute возвращает профиль по user_id из JWT.
-func (uc *GetUser) Execute(ctx context.Context, input GetUserInput) (GetUserOutput, error) {
+func (uc *GetUser) Execute(ctx context.Context, input GetUserInput) (out GetUserOutput, err error) {
+	ctx, span := tracing.Start(ctx, "user.GetUser")
+	defer tracing.End(span, &err)
+
 	userID := strings.TrimSpace(input.UserID)
 	if userID == "" {
 		return GetUserOutput{}, fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)

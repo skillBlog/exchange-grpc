@@ -3,6 +3,7 @@ package grpcserver
 import (
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	"github.com/exchange-grpc/orderservice/internal/infrastructure/hub"
 	"go.uber.org/zap"
 )
 
@@ -13,7 +14,7 @@ type Services struct {
 	ListOrders         *application.ListOrders
 	StreamOrderUpdates *application.StreamOrderUpdates
 	UpdateOrderStatus  *application.UpdateOrderStatus
-	Hub                *application.UpdateHub
+	Hub                *hub.UpdateHub
 }
 
 // NewServices подключает use case'ы Order с общим hub обновлений.
@@ -25,13 +26,13 @@ func NewServices(
 	hubBufferSize int,
 	log *zap.Logger,
 ) Services {
-	hub := application.NewUpdateHub(hubBufferSize, log)
+	orderHub := hub.NewUpdateHub(hubBufferSize, log)
 	return Services{
-		Hub:                hub,
-		CreateOrder:        application.NewCreateOrder(orders, markets, idempotency, hub, limiter),
+		Hub:                orderHub,
+		CreateOrder:        application.NewCreateOrder(orders, markets, idempotency, orderHub, limiter),
 		GetOrderStatus:     application.NewGetOrderStatus(orders),
 		ListOrders:         application.NewListOrders(orders),
-		StreamOrderUpdates: application.NewStreamOrderUpdates(orders, hub),
-		UpdateOrderStatus:  application.NewUpdateOrderStatus(orders, hub),
+		StreamOrderUpdates: application.NewStreamOrderUpdates(orders, orderHub),
+		UpdateOrderStatus:  application.NewUpdateOrderStatus(orders, orderHub),
 	}
 }

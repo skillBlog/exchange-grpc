@@ -44,7 +44,7 @@ func TestStreamOrderUpdates_receivesMultipleUpdates(t *testing.T) {
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		_ = ordertestserver.UpdateOrderStatus(context.Background(), suite.OrderServices, ordertestserver.UpdateOrderStatusInput{
-			OrderID: created.GetOrderId().GetValue(),
+			OrderID: created.GetOrderId(),
 			UserID:  "user-1",
 			Status:  ordertestserver.OrderStatusFilled,
 		})

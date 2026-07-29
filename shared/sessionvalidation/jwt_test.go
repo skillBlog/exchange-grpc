@@ -40,3 +40,16 @@ func TestTokenService_rejectsInvalidToken(t *testing.T) {
 		t.Fatal("expected error for invalid token")
 	}
 }
+
+func TestTokenService_rejectsNoneAlgorithm(t *testing.T) {
+	svc, err := sessionvalidation.NewTokenService("test-secret", time.Hour)
+	if err != nil {
+		t.Fatalf("NewTokenService() error = %v", err)
+	}
+
+	// JWT with alg=none (unsigned) must be rejected by WithValidMethods(HS256).
+	noneToken := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ1c2VyX2lkIjoidXNlci0xIn0."
+	if _, err := svc.Validate(noneToken); err == nil {
+		t.Fatal("expected error for alg=none token")
+	}
+}

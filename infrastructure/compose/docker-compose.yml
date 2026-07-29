@@ -47,8 +47,13 @@ services:
       USER_DATABASE_URL: "postgres://exchange:exchange@postgres:5432/userservice?sslmode=disable"
       USER_MIGRATIONS_DIR: "/app/migrations"
       LOGIN_RATE_LIMIT: "5"
+      LOGIN_RATE_WINDOW: "1m"
+      REDIS_URL: "redis://redis:6379/0"
+      LOG_LEVEL: "info"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - exchange

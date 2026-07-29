@@ -10,7 +10,7 @@ import "common/v1/money.proto";
 import "common/v1/order_side.proto";
 import "common/v1/order_status.proto";
 import "common/v1/pagination.proto";
-import "common/v1/uuid.proto";
+import "google/protobuf/timestamp.proto";
 
 // OrderService — сервис управления ордерами.
 service OrderService {
@@ -31,22 +31,23 @@ message CreateOrderRequest {
 }
 
 message CreateOrderResponse {
-  common.v1.Uuid order_id = 1;
+  string order_id = 1 [(buf.validate.field).string.uuid = true];
   common.v1.OrderStatus status = 2;
 }
 
 message GetOrderStatusRequest {
-  common.v1.Uuid order_id = 1;
+  string order_id = 1 [(buf.validate.field).string.uuid = true];
 }
 
 message GetOrderStatusResponse {
-  common.v1.Uuid order_id = 1;
-  common.v1.Uuid user_id = 2;
+  string order_id = 1 [(buf.validate.field).string.uuid = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
   string market_id = 3;
   common.v1.OrderSide side = 4;
   common.v1.Money price = 5;
   common.v1.Decimal quantity = 6;
   common.v1.OrderStatus status = 7;
+  google.protobuf.Timestamp created_at = 8;
 }
 
 // ListOrdersRequest — список ордеров текущего пользователя (user_id из JWT).
@@ -60,19 +61,20 @@ message ListOrdersResponse {
 }
 
 message OrderSummary {
-  common.v1.Uuid order_id = 1;
+  string order_id = 1 [(buf.validate.field).string.uuid = true];
   string market_id = 2;
   common.v1.OrderSide side = 3;
   common.v1.Money price = 4;
   common.v1.Decimal quantity = 5;
   common.v1.OrderStatus status = 6;
+  google.protobuf.Timestamp created_at = 7;
 }
 
 message StreamOrderUpdatesRequest {
-  common.v1.Uuid order_id = 1;
+  string order_id = 1 [(buf.validate.field).string.uuid = true];
 }
 
 message OrderUpdate {
-  common.v1.Uuid order_id = 1;
+  string order_id = 1 [(buf.validate.field).string.uuid = true];
   common.v1.OrderStatus status = 2;
 }

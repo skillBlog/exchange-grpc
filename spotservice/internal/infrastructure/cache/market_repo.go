@@ -13,16 +13,15 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
-// MarketRepository кеширует чтение рынков поверх базового репозитория.
+// MarketRepository кеширует GetByID поверх базового репозитория.
+// ListActivePage не кешируется: страницы зависят от ролей пользователя.
 type MarketRepository struct {
 	inner domain.MarketRepository
 	ttl   time.Duration
 	now   func() time.Time
 
-	mu            sync.RWMutex
-	activeList    []domain.Market
-	activeExpires time.Time
-	byID          map[string]cacheEntry
+	mu   sync.RWMutex
+	byID map[string]cacheEntry
 }
 
 // NewMarketRepository создаёт caching decorator.
@@ -60,37 +59,14 @@ func (r *MarketRepository) GetByID(ctx context.Context, id string) (domain.Marke
 	return market, nil
 }
 
-// ListActive возвращает активные рынки из кеша или базового репозитория.
-func (r *MarketRepository) ListActive(ctx context.Context) ([]domain.Market, error) {
-	now := r.now()
-
-	r.mu.RLock()
-	if r.activeExpires.After(now) && r.activeList != nil {
-		cached := append([]domain.Market(nil), r.activeList...)
-		r.mu.RUnlock()
-		return cached, nil
-	}
-	r.mu.RUnlock()
-
-	markets, err := r.inner.ListActive(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	r.mu.Lock()
-	r.activeList = append([]domain.Market(nil), markets...)
-	r.activeExpires = now.Add(r.ttl)
-	for _, market := range markets {
-		r.byID[market.ID] = cacheEntry{market: market, expiresAt: r.activeExpires}
-	}
-	r.mu.Unlock()
-	return markets, nil
+// ListActivePage проксирует запрос в базовый репозиторий без кеша списка.
+func (r *MarketRepository) ListActivePage(ctx context.Context, userRoles []string, limit int, afterID string) ([]domain.Market, error) {
+	return r.inner.ListActivePage(ctx, userRoles, limit, afterID)
 }
 
-// Ping проверяет, что кеш и базовый репозиторий отвечают.
+// Ping делегирует проверку базовому репозиторию.
 func (r *MarketRepository) Ping(ctx context.Context) error {
-	_, err := r.ListActive(ctx)
-	return err
+	return r.inner.Ping(ctx)
 }
 
 var _ domain.MarketRepository = (*MarketRepository)(nil)

@@ -3,10 +3,10 @@ package application
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	"github.com/exchange-grpc/shared/tracing"
 )
 
 const (
@@ -39,20 +39,14 @@ func NewListOrders(orders domain.OrderRepository) *ListOrders {
 }
 
 // Execute возвращает страницу ордеров пользователя.
-func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (ListOrdersOutput, error) {
+func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (out ListOrdersOutput, err error) {
+	ctx, span := tracing.Start(ctx, "order.ListOrders")
+	defer tracing.End(span, &err)
+
 	userID := strings.TrimSpace(input.UserID)
 	if userID == "" {
 		return ListOrdersOutput{}, fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
 	}
-
-	orders, err := uc.orders.ListByUserID(ctx, userID)
-	if err != nil {
-		return ListOrdersOutput{}, err
-	}
-
-	slices.SortFunc(orders, func(a, b domain.Order) int {
-		return strings.Compare(a.ID, b.ID)
-	})
 
 	pageSize := input.PageSize
 	if pageSize <= 0 {
@@ -62,34 +56,24 @@ func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (ListO
 		pageSize = listOrdersMaxPageSize
 	}
 
-	start := 0
-	if input.PageToken != "" {
-		idx, found := slices.BinarySearchFunc(orders, input.PageToken, func(order domain.Order, token string) int {
-			return strings.Compare(order.ID, token)
-		})
-		if found {
-			start = idx + 1
-		} else if idx < len(orders) {
-			start = idx
-		} else {
-			return ListOrdersOutput{Orders: []domain.Order{}}, nil
-		}
+	// Запрашиваем pageSize+1, чтобы понять, есть ли следующая страница.
+	orders, err := uc.orders.ListByUserID(ctx, userID, int(pageSize)+1, strings.TrimSpace(input.PageToken))
+	if err != nil {
+		return ListOrdersOutput{}, err
 	}
 
-	end := start + int(pageSize)
-	hasMore := end < len(orders)
-	if end > len(orders) {
-		end = len(orders)
+	hasMore := len(orders) > int(pageSize)
+	if hasMore {
+		orders = orders[:pageSize]
 	}
 
-	page := orders[start:end]
 	var nextPageToken string
-	if hasMore && len(page) > 0 {
-		nextPageToken = page[len(page)-1].ID
+	if hasMore && len(orders) > 0 {
+		nextPageToken = orders[len(orders)-1].ID
 	}
 
 	return ListOrdersOutput{
-		Orders:        page,
+		Orders:        orders,
 		NextPageToken: nextPageToken,
 		HasMore:       hasMore,
 	}, nil

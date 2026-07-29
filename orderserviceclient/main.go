@@ -81,25 +81,29 @@ func run(email, password string, register bool, marketID, orderSide, price, quan
 	defer userConn.Close()
 
 	userClient := userv1.NewUserServiceClient(userConn)
+	var accessToken string
 	if register {
-		if _, err := userClient.Register(ctx, &userv1.RegisterRequest{
+		regResp, err := userClient.Register(ctx, &userv1.RegisterRequest{
 			Email:    email,
 			Password: password,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("register: %w", err)
 		}
+		accessToken = regResp.GetAccessToken()
 		fmt.Println("user registered")
+	} else {
+		loginResp, err := userClient.Login(ctx, &userv1.LoginRequest{
+			Email:    email,
+			Password: password,
+		})
+		if err != nil {
+			return fmt.Errorf("login: %w", err)
+		}
+		accessToken = loginResp.GetAccessToken()
 	}
 
-	loginResp, err := userClient.Login(ctx, &userv1.LoginRequest{
-		Email:    email,
-		Password: password,
-	})
-	if err != nil {
-		return fmt.Errorf("login: %w", err)
-	}
-
-	ctx = grpc.OutgoingContextWithBearer(ctx, loginResp.GetAccessToken())
+	ctx = grpc.OutgoingContextWithBearer(ctx, accessToken)
 
 	orderConn, err := googlegrpc.NewClient(orderAddr,
 		googlegrpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -124,7 +128,7 @@ func run(email, password string, register bool, marketID, orderSide, price, quan
 		return fmt.Errorf("create order: %w", err)
 	}
 
-	fmt.Printf("order_id: %s\n", mapper.UuidToString(resp.GetOrderId()))
+	fmt.Printf("order_id: %s\n", resp.GetOrderId())
 	fmt.Printf("status: %s\n", resp.GetStatus().String())
 	fmt.Printf("request_id: %s\n", requestID)
 	return nil

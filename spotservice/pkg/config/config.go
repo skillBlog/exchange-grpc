@@ -27,6 +27,7 @@ type Config struct {
 	MarketCacheTTL        time.Duration
 	ViewMarketsRateLimit  int
 	ViewMarketsRateWindow time.Duration
+	LogLevelAddr          string
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
@@ -40,6 +41,7 @@ func LoadConfig() Config {
 		MarketCacheTTL:        envDurationOrDefault("MARKET_CACHE_TTL", defaultMarketCacheTTL),
 		ViewMarketsRateLimit:  envIntOrDefault("VIEW_MARKETS_RATE_LIMIT", defaultViewMarketsRateLimit),
 		ViewMarketsRateWindow: envDurationOrDefault("VIEW_MARKETS_RATE_WINDOW", defaultViewMarketsRateWindow),
+		LogLevelAddr:          os.Getenv("LOG_LEVEL_ADDR"),
 	}
 }
 

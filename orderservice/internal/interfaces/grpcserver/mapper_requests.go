@@ -5,6 +5,7 @@ import (
 	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Mapper преобразует protobuf-запросы в application input/output.
@@ -60,11 +61,12 @@ func (Mapper) ListOrdersOutputToResponse(out application.ListOrdersOutput) *orde
 
 func orderToSummary(order domain.Order) *orderv1.OrderSummary {
 	return &orderv1.OrderSummary{
-		OrderId:  stringToUuid(order.ID),
-		MarketId: order.MarketID,
-		Side:     orderSideToProto(order.Side),
-		Price:    moneyToProto(order.Price),
-		Quantity: decimalToProto(order.Quantity),
-		Status:   orderStatusToProto(order.Status),
+		OrderId:   order.ID,
+		MarketId:  order.MarketID,
+		Side:      orderSideToProto(order.Side),
+		Price:     moneyToProto(order.Price),
+		Quantity:  decimalToProto(order.Quantity),
+		Status:    orderStatusToProto(order.Status),
+		CreatedAt: timestamppb.New(order.CreatedAt),
 	}
 }

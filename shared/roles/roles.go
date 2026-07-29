@@ -2,6 +2,7 @@ package roles
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -43,7 +44,15 @@ func Validate(role Role) error {
 	return nil
 }
 
-// NormalizeStrings нормализует список ролей, отбрасывая пустые и дубликаты.
+func reportUnknownRole(raw string) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return
+	}
+	log.Printf("roles: unknown role %q ignored", trimmed)
+}
+
+// NormalizeStrings нормализует список ролей, отбрасывая пустые, неизвестные и дубликаты.
 func NormalizeStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
@@ -52,11 +61,14 @@ func NormalizeStrings(values []string) []string {
 	seen := make(map[Role]struct{}, len(values))
 	result := make([]string, 0, len(values))
 	for _, value := range values {
-		role := Normalize(value)
-		if role == "" {
+		role, ok := Parse(value)
+		if !ok {
+			if strings.TrimSpace(value) != "" {
+				reportUnknownRole(value)
+			}
 			continue
 		}
-		if _, ok := seen[role]; ok {
+		if _, exists := seen[role]; exists {
 			continue
 		}
 		seen[role] = struct{}{}
@@ -82,6 +94,7 @@ func ContainsAny(userRoles []string, allowed ...Role) bool {
 	for _, raw := range userRoles {
 		role, ok := Parse(raw)
 		if !ok {
+			reportUnknownRole(raw)
 			continue
 		}
 		if _, ok := allowedSet[role]; ok {
@@ -105,14 +118,19 @@ func Match(allowedRoles, userRoles []string) bool {
 	for _, raw := range allowedRoles {
 		if role, ok := Parse(raw); ok {
 			allowed[role] = struct{}{}
+		} else {
+			reportUnknownRole(raw)
 		}
 	}
 
 	for _, raw := range userRoles {
-		if role, ok := Parse(raw); ok {
-			if _, ok := allowed[role]; ok {
-				return true
-			}
+		role, ok := Parse(raw)
+		if !ok {
+			reportUnknownRole(raw)
+			continue
+		}
+		if _, ok := allowed[role]; ok {
+			return true
 		}
 	}
 	return false

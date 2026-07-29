@@ -36,3 +36,25 @@ func TestNormalizeStrings_deduplicates(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeStrings_dropsUnknownRoles(t *testing.T) {
+	got := roles.NormalizeStrings([]string{"trader", "superuser", "admin"})
+	want := []string{"trader", "admin"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestMatch_ignoresUnknownRoles(t *testing.T) {
+	if roles.Match([]string{"trader"}, []string{"superuser"}) {
+		t.Fatal("unknown role must not grant access")
+	}
+	if !roles.Match([]string{"trader"}, []string{"superuser", "trader"}) {
+		t.Fatal("known role among unknowns must still match")
+	}
+}

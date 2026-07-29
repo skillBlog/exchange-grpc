@@ -1,8 +1,9 @@
-package application
+package hub
 
 import (
 	"sync"
 
+	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/shared/logger"
 	"go.uber.org/zap"
@@ -10,16 +11,10 @@ import (
 
 const defaultSubscriberBuffer = 256
 
-// UpdateEvent отправляется подписчикам на обновления ордера.
-type UpdateEvent struct {
-	OrderID string
-	Status  domain.OrderStatus
-}
-
-// UpdateHub рассылает изменения статуса ордера подписчикам.
+// UpdateHub — in-memory реализация рассылки обновлений ордеров.
 type UpdateHub struct {
 	mu               sync.RWMutex
-	subscribers      map[string]map[chan UpdateEvent]struct{}
+	subscribers      map[string]map[chan application.UpdateEvent]struct{}
 	subscriberBuffer int
 	log              *zap.Logger
 }
@@ -33,7 +28,7 @@ func NewUpdateHub(subscriberBuffer int, log *zap.Logger) *UpdateHub {
 		log = logger.NewNop()
 	}
 	return &UpdateHub{
-		subscribers:      make(map[string]map[chan UpdateEvent]struct{}),
+		subscribers:      make(map[string]map[chan application.UpdateEvent]struct{}),
 		subscriberBuffer: subscriberBuffer,
 		log:              log,
 	}
@@ -45,7 +40,7 @@ func (h *UpdateHub) Publish(orderID string, status domain.OrderStatus) {
 		return
 	}
 
-	event := UpdateEvent{OrderID: orderID, Status: status}
+	event := application.UpdateEvent{OrderID: orderID, Status: status}
 
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -64,12 +59,12 @@ func (h *UpdateHub) Publish(orderID string, status domain.OrderStatus) {
 
 // Subscribe регистрирует слушателя для конкретного ордера.
 // unsubscribe безопасен при повторных вызовах благодаря sync.Once.
-func (h *UpdateHub) Subscribe(orderID string) (<-chan UpdateEvent, func()) {
-	ch := make(chan UpdateEvent, h.subscriberBuffer)
+func (h *UpdateHub) Subscribe(orderID string) (<-chan application.UpdateEvent, func()) {
+	ch := make(chan application.UpdateEvent, h.subscriberBuffer)
 
 	h.mu.Lock()
 	if h.subscribers[orderID] == nil {
-		h.subscribers[orderID] = make(map[chan UpdateEvent]struct{})
+		h.subscribers[orderID] = make(map[chan application.UpdateEvent]struct{})
 	}
 	h.subscribers[orderID][ch] = struct{}{}
 	h.mu.Unlock()
@@ -90,3 +85,8 @@ func (h *UpdateHub) Subscribe(orderID string) (<-chan UpdateEvent, func()) {
 
 	return ch, unsubscribe
 }
+
+var (
+	_ application.OrderNotifier  = (*UpdateHub)(nil)
+	_ application.OrderUpdateHub = (*UpdateHub)(nil)
+)

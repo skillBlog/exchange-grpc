@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
 	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/shared/grpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	googlegrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -38,6 +40,7 @@ func New(conn googlegrpc.ClientConnInterface, timeout time.Duration) *Client {
 func Dial(ctx context.Context, target string, opts ...googlegrpc.DialOption) (*googlegrpc.ClientConn, error) {
 	dialOpts := []googlegrpc.DialOption{
 		googlegrpc.WithTransportCredentials(insecure.NewCredentials()),
+		googlegrpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		googlegrpc.WithUnaryInterceptor(grpc.ChainUnaryClient(
 			grpc.UnaryClientRequestID,
 			grpc.UnaryClientForwardAuthorization,
@@ -69,11 +72,26 @@ func (c *Client) EnsureMarketAvailable(ctx context.Context, marketID string, use
 		return fmt.Errorf("%w: market %q", domain.ErrMarketInactive, marketID)
 	}
 
-	if !domain.IsAccessibleByRoles(market.GetAllowedRoles(), userRoles) {
+	if !domain.IsAccessibleByRoles(protoRolesToStrings(market.GetAllowedRoles()), userRoles) {
 		return fmt.Errorf("%w: market %q", domain.ErrForbidden, marketID)
 	}
 
 	return nil
+}
+
+func protoRolesToStrings(values []commonv1.Role) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		switch value {
+		case commonv1.Role_ROLE_USER:
+			result = append(result, "user")
+		case commonv1.Role_ROLE_TRADER:
+			result = append(result, "trader")
+		case commonv1.Role_ROLE_ADMIN:
+			result = append(result, "admin")
+		}
+	}
+	return result
 }
 
 var _ application.MarketChecker = (*Client)(nil)

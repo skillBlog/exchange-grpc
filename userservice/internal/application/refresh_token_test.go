@@ -22,7 +22,7 @@ func TestRefreshToken_success(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher())
+	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "refresh@example.com",
 		Password: "password123",
@@ -49,11 +49,34 @@ func TestRefreshToken_success(t *testing.T) {
 	if out.AccessToken == "" {
 		t.Fatal("expected new access token")
 	}
+	if out.RefreshToken == "" {
+		t.Fatal("expected rotated refresh token")
+	}
+	if out.RefreshToken == loginOut.RefreshToken {
+		t.Fatal("expected refresh token to rotate")
+	}
+
+	if _, err := refreshUC.Execute(context.Background(), application.RefreshTokenInput{
+		RefreshToken: loginOut.RefreshToken,
+	}); err == nil {
+		t.Fatal("expected old refresh token to be revoked")
+	}
+
+	if _, err := refreshUC.Execute(context.Background(), application.RefreshTokenInput{
+		RefreshToken: out.RefreshToken,
+	}); err != nil {
+		t.Fatalf("new refresh token should work: %v", err)
+	}
 }
 
 func TestGetUser_success(t *testing.T) {
 	repo := memory.NewUserRepository()
-	register := application.NewRegister(repo, bcrypt.NewHasher())
+	accessTokens, err := sessionvalidation.NewTokenService("test-secret", time.Hour)
+	if err != nil {
+		t.Fatalf("NewTokenService() error = %v", err)
+	}
+	refreshTokens := tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
+	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
 	registerOut, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "profile@example.com",
 		Password: "password123",
@@ -81,7 +104,7 @@ func TestLogout_revokesRefreshToken(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher())
+	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "logout@example.com",
 		Password: "password123",

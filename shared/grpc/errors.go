@@ -15,7 +15,7 @@ var (
 	ErrForbidden          = sharederrors.ErrForbidden
 	ErrUnauthorized       = sharederrors.ErrUnauthorized
 	ErrAlreadyExists      = sharederrors.ErrAlreadyExists
-	ErrFailedPrecondition = sharederrors.ErrMarketInactive
+	ErrFailedPrecondition = sharederrors.ErrFailedPrecondition
 )
 
 // ErrorMapping описывает соответствие domain-ошибки gRPC status code.
@@ -53,7 +53,7 @@ func StatusFromError(err error, extra ...ErrorMapping) error {
 		return status.Error(codes.Unauthenticated, err.Error())
 	case errors.Is(err, sharederrors.ErrAlreadyExists):
 		return status.Error(codes.AlreadyExists, err.Error())
-	case errors.Is(err, sharederrors.ErrMarketInactive):
+	case errors.Is(err, sharederrors.ErrFailedPrecondition):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, sharederrors.ErrRateLimited):
 		return status.Error(codes.ResourceExhausted, err.Error())

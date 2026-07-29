@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
 )
 
@@ -13,12 +14,13 @@ type RefreshTokenInput struct {
 	RefreshToken string
 }
 
-// RefreshTokenOutput — новый access token.
+// RefreshTokenOutput — новая пара access/refresh (rotation).
 type RefreshTokenOutput struct {
-	AccessToken string
+	AccessToken  string
+	RefreshToken string
 }
 
-// RefreshToken обновляет access token по refresh token.
+// RefreshToken обновляет access token и ротирует refresh token.
 type RefreshToken struct {
 	users         domain.UserRepository
 	accessTokens  AccessTokenIssuer
@@ -38,14 +40,17 @@ func NewRefreshToken(
 	}
 }
 
-// Execute выпускает новый access token.
-func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (RefreshTokenOutput, error) {
-	token := strings.TrimSpace(input.RefreshToken)
-	if token == "" {
+// Execute выпускает новый access token и новый refresh token, отзывая старый.
+func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (out RefreshTokenOutput, err error) {
+	ctx, span := tracing.Start(ctx, "user.RefreshToken")
+	defer tracing.End(span, &err)
+
+	oldRefresh := strings.TrimSpace(input.RefreshToken)
+	if oldRefresh == "" {
 		return RefreshTokenOutput{}, fmt.Errorf("%w: refresh token is required", domain.ErrInvalidArgument)
 	}
 
-	userID, err := uc.refreshTokens.Validate(ctx, token)
+	userID, err := uc.refreshTokens.Validate(ctx, oldRefresh)
 	if err != nil {
 		return RefreshTokenOutput{}, err
 	}
@@ -60,5 +65,18 @@ func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (R
 		return RefreshTokenOutput{}, fmt.Errorf("issue access token: %w", err)
 	}
 
-	return RefreshTokenOutput{AccessToken: accessToken}, nil
+	newRefresh, err := uc.refreshTokens.Issue(ctx, user.ID)
+	if err != nil {
+		return RefreshTokenOutput{}, fmt.Errorf("issue refresh token: %w", err)
+	}
+
+	// Сначала выдаём новый, потом отзываем старый — клиент не останется без валидного refresh.
+	if err = uc.refreshTokens.Revoke(ctx, oldRefresh); err != nil {
+		return RefreshTokenOutput{}, fmt.Errorf("revoke old refresh token: %w", err)
+	}
+
+	return RefreshTokenOutput{
+		AccessToken:  accessToken,
+		RefreshToken: newRefresh,
+	}, nil
 }

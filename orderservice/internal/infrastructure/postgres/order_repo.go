@@ -34,7 +34,7 @@ func (r *OrderRepository) Create(ctx context.Context, order domain.Order) error 
 	_, err := r.db.Pool.Exec(ctx, `
 		INSERT INTO orders (
 			id, user_id, market_id, side, price_amount, price_currency, quantity, status, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		) VALUES ($1, $2, $3, $4, $5::numeric, $6, $7::numeric, $8, $9, $10)
 	`, order.ID, order.UserID, order.MarketID, string(order.Side),
 		priceAmount, priceCurrency, order.Quantity.Value, string(order.Status),
 		order.CreatedAt, order.UpdatedAt)
@@ -51,7 +51,9 @@ func (r *OrderRepository) Create(ctx context.Context, order domain.Order) error 
 // GetByID возвращает ордер по id.
 func (r *OrderRepository) GetByID(ctx context.Context, id string) (domain.Order, error) {
 	row := r.db.Pool.QueryRow(ctx, `
-		SELECT id, user_id, market_id, side, price_amount, price_currency, quantity, status, created_at, updated_at
+		SELECT id, user_id, market_id, side,
+			price_amount::text, price_currency, quantity::text,
+			status, created_at, updated_at
 		FROM orders
 		WHERE id = $1
 	`, id)
@@ -75,20 +77,28 @@ func (r *OrderRepository) GetByIDAndUserID(ctx context.Context, orderID, userID 
 	return order, nil
 }
 
-// ListByUserID возвращает ордера пользователя.
-func (r *OrderRepository) ListByUserID(ctx context.Context, userID string) ([]domain.Order, error) {
+// ListByUserID возвращает страницу ордеров пользователя по курсору id.
+func (r *OrderRepository) ListByUserID(ctx context.Context, userID string, limit int, afterID string) ([]domain.Order, error) {
+	if limit <= 0 {
+		return []domain.Order{}, nil
+	}
+
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT id, user_id, market_id, side, price_amount, price_currency, quantity, status, created_at, updated_at
+		SELECT id, user_id, market_id, side,
+			price_amount::text, price_currency, quantity::text,
+			status, created_at, updated_at
 		FROM orders
 		WHERE user_id = $1
+			AND ($2 = '' OR id > $2::uuid)
 		ORDER BY id
-	`, userID)
+		LIMIT $3
+	`, userID, afterID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list orders: %w", err)
 	}
 	defer rows.Close()
 
-	orders := make([]domain.Order, 0)
+	orders := make([]domain.Order, 0, limit)
 	for rows.Next() {
 		order, err := scanOrder(rows)
 		if err != nil {

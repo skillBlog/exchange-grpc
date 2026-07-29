@@ -16,24 +16,37 @@ type Checker func(ctx context.Context) error
 
 // Watcher периодически обновляет gRPC health status.
 type Watcher struct {
-	server      *health.Server
-	serviceName string
-	checks      []Checker
-	interval    time.Duration
-	log         *zap.Logger
+	server         *health.Server
+	serviceName    string
+	criticalChecks []Checker
+	optionalChecks []Checker
+	interval       time.Duration
+	log            *zap.Logger
 }
 
 // NewWatcher создаёт health watcher.
-func NewWatcher(server *health.Server, serviceName string, interval time.Duration, log *zap.Logger, checks ...Checker) *Watcher {
+// criticalChecks валят статус сервиса; optionalChecks только логируются (graceful degradation).
+func NewWatcher(
+	server *health.Server,
+	serviceName string,
+	interval time.Duration,
+	log *zap.Logger,
+	criticalChecks []Checker,
+	optionalChecks ...Checker,
+) *Watcher {
 	if interval <= 0 {
 		interval = defaultCheckInterval
 	}
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &Watcher{
-		server:      server,
-		serviceName: serviceName,
-		checks:      checks,
-		interval:    interval,
-		log:         log,
+		server:         server,
+		serviceName:    serviceName,
+		criticalChecks: append([]Checker(nil), criticalChecks...),
+		optionalChecks: append([]Checker(nil), optionalChecks...),
+		interval:       interval,
+		log:            log,
 	}
 }
 
@@ -57,15 +70,21 @@ func (w *Watcher) update(ctx context.Context) {
 	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	for _, check := range w.checks {
+	for _, check := range w.criticalChecks {
 		if err := check(checkCtx); err != nil {
 			status = healthpb.HealthCheckResponse_NOT_SERVING
-			w.log.Warn("health check failed", zap.Error(err))
+			w.log.Error("critical health check failed", zap.Error(err))
 			break
 		}
 	}
 
-	w.server.SetServingStatus("", status)
+	for _, check := range w.optionalChecks {
+		if err := check(checkCtx); err != nil {
+			w.log.Warn("optional health check failed", zap.Error(err))
+		}
+	}
+
+	// Только статус именованного сервиса — без глобального "" (ментор: не валить весь server status).
 	if w.serviceName != "" {
 		w.server.SetServingStatus(w.serviceName, status)
 	}

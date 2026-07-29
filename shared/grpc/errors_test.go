@@ -19,7 +19,7 @@ func TestStatusFromError_commonMappings(t *testing.T) {
 		{name: "forbidden", err: sharederrors.ErrForbidden, code: codes.PermissionDenied},
 		{name: "unauthorized", err: sharederrors.ErrUnauthorized, code: codes.Unauthenticated},
 		{name: "rate limited", err: sharederrors.ErrRateLimited, code: codes.ResourceExhausted},
-		{name: "market inactive", err: sharederrors.ErrMarketInactive, code: codes.FailedPrecondition},
+		{name: "failed precondition", err: sharederrors.ErrFailedPrecondition, code: codes.FailedPrecondition},
 	}
 
 	for _, tc := range tests {

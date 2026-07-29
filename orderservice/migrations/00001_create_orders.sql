@@ -4,9 +4,9 @@ CREATE TABLE IF NOT EXISTS orders (
     user_id UUID NOT NULL,
     market_id TEXT NOT NULL,
     side TEXT NOT NULL,
-    price_amount TEXT,
+    price_amount NUMERIC,
     price_currency TEXT,
-    quantity TEXT NOT NULL,
+    quantity NUMERIC NOT NULL,
     status TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
