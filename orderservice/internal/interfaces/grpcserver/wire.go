@@ -1,6 +1,8 @@
 package grpcserver
 
 import (
+	"time"
+
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/hub"
@@ -24,12 +26,13 @@ func NewServices(
 	markets application.MarketChecker,
 	limiter application.CreateOrderRateLimiter,
 	hubBufferSize int,
+	hubPublishTimeout time.Duration,
 	log *zap.Logger,
 ) Services {
-	orderHub := hub.NewUpdateHub(hubBufferSize, log)
+	orderHub := hub.NewUpdateHub(hubBufferSize, log, hubPublishTimeout)
 	return Services{
 		Hub:                orderHub,
-		CreateOrder:        application.NewCreateOrder(orders, markets, idempotency, orderHub, limiter),
+		CreateOrder:        application.NewCreateOrder(orders, markets, idempotency, orderHub, limiter, log),
 		GetOrderStatus:     application.NewGetOrderStatus(orders),
 		ListOrders:         application.NewListOrders(orders),
 		StreamOrderUpdates: application.NewStreamOrderUpdates(orders, orderHub),

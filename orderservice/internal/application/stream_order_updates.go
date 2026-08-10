@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -26,20 +25,20 @@ func NewStreamOrderUpdates(orders domain.OrderRepository, hub OrderUpdateHub) *S
 	return &StreamOrderUpdates{orders: orders, hub: hub}
 }
 
-// Execute отправляет текущий статус, затем стримит обновления из hub до отмены контекста.
+// Execute отправляет текущий статус, затем стримит обновления из hub до финального статуса или отмены контекста.
 func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpdatesInput, send func(UpdateEvent) error) (err error) {
 	ctx, span := tracing.Start(ctx, "order.StreamOrderUpdates",
 		tracing.Attr("order.id", strings.TrimSpace(input.OrderID)),
 	)
 	defer tracing.End(span, &err)
 
-	orderID := strings.TrimSpace(input.OrderID)
-	userID := strings.TrimSpace(input.UserID)
-	if orderID == "" {
-		return fmt.Errorf("%w: order_id is required", domain.ErrInvalidArgument)
+	orderID, err := domain.ParseUUID(input.OrderID, "order_id")
+	if err != nil {
+		return err
 	}
-	if userID == "" {
-		return fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
+	userID, err := domain.ParseUUID(input.UserID, "user_id")
+	if err != nil {
+		return err
 	}
 
 	order, err := uc.orders.GetByIDAndUserID(ctx, orderID, userID)
@@ -47,8 +46,11 @@ func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpda
 		return err
 	}
 
-	if err = send(UpdateEvent{OrderID: order.ID, Status: order.Status}); err != nil {
+	if err = send(UpdateEvent{OrderID: order.ID, Status: order.Status, UpdatedAt: order.UpdatedAt}); err != nil {
 		return err
+	}
+	if order.Status.IsTerminal() {
+		return nil
 	}
 
 	if uc.hub == nil {
@@ -69,6 +71,9 @@ func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpda
 			}
 			if err = send(update); err != nil {
 				return err
+			}
+			if update.Status.IsTerminal() {
+				return nil
 			}
 		}
 	}

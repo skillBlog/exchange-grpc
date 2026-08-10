@@ -61,7 +61,11 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init tracing: %w", err)
 	}
-	defer func() { _ = shutdownTracing(context.Background()) }()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), tracing.DefaultShutdownTimeout)
+		defer cancel()
+		_ = shutdownTracing(shutdownCtx)
+	}()
 
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
@@ -79,7 +83,10 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init token service: %w", err)
 	}
-	validator := grpc.MustNewProtoValidator()
+	validator, err := grpc.NewProtoValidator()
+	if err != nil {
+		return fmt.Errorf("init proto validator: %w", err)
+	}
 
 	marketRepo := cache.NewMarketRepository(postgres.NewMarketRepository(db), r.cfg.MarketCacheTTL)
 	viewMarketsLimiter := ratelimit.NewViewMarketsLimiter(r.cfg.ViewMarketsRateLimit, r.cfg.ViewMarketsRateWindow)
@@ -89,9 +96,12 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
 		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
 			grpc.UnaryServerRequestID,
-			grpc.UnaryServerLogging(log),
+			grpc.NewUnaryServerJWTAuth(tokens,
+				grpc_health_v1.Health_Check_FullMethodName,
+				grpc_health_v1.Health_Watch_FullMethodName,
+			),
 			grpc.NewUnaryServerProtoValidate(validator),
-			grpc.NewUnaryServerJWTAuth(tokens),
+			grpc.UnaryServerLogging(log),
 		)),
 	)
 	spotv1.RegisterSpotServiceServer(grpcServer, server)
@@ -109,6 +119,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		healthServer,
 		spotv1.SpotService_ServiceDesc.ServiceName,
 		10*time.Second,
+		r.cfg.HealthCheckTimeout,
 		log,
 		[]sharedhealth.Checker{db.Ping, marketRepo.Ping},
 	)

@@ -112,11 +112,16 @@ func parseBearerToken(raw string) (string, bool) {
 }
 
 // OutgoingContextWithBearer добавляет Bearer JWT в исходящий gRPC metadata.
+// Использует Set, чтобы не дублировать authorization через Join.
 func OutgoingContextWithBearer(ctx context.Context, accessToken string) context.Context {
-	md := metadata.Pairs(MetadataAuthorization, "Bearer "+strings.TrimSpace(accessToken))
-	if existing, ok := metadata.FromOutgoingContext(ctx); ok {
-		md = metadata.Join(existing, md)
+	token := strings.TrimSpace(accessToken)
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if ok {
+		md = md.Copy()
+	} else {
+		md = metadata.MD{}
 	}
+	md.Set(MetadataAuthorization, "Bearer "+token)
 	return metadata.NewOutgoingContext(ctx, md)
 }
 
@@ -140,11 +145,14 @@ func UnaryClientForwardAuthorization(
 			if token, ok := parseBearerToken(raw); ok {
 				ctx = OutgoingContextWithBearer(ctx, token)
 			} else {
-				outMD := metadata.Pairs(MetadataAuthorization, raw)
-				if existing, ok := metadata.FromOutgoingContext(ctx); ok {
-					outMD = metadata.Join(existing, outMD)
+				md, hasOutgoing := metadata.FromOutgoingContext(ctx)
+				if hasOutgoing {
+					md = md.Copy()
+				} else {
+					md = metadata.MD{}
 				}
-				ctx = metadata.NewOutgoingContext(ctx, outMD)
+				md.Set(MetadataAuthorization, raw)
+				ctx = metadata.NewOutgoingContext(ctx, md)
 			}
 		}
 	}

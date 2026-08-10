@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -32,12 +31,14 @@ func (uc *GetOrderStatus) Execute(ctx context.Context, input GetOrderStatusInput
 	)
 	defer tracing.End(span, &err)
 
-	if strings.TrimSpace(input.OrderID) == "" {
-		return domain.Order{}, fmt.Errorf("%w: order_id is required", domain.ErrInvalidArgument)
+	orderID, err := domain.ParseUUID(input.OrderID, "order_id")
+	if err != nil {
+		return domain.Order{}, err
 	}
-	if strings.TrimSpace(input.UserID) == "" {
-		return domain.Order{}, fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
+	userID, err := domain.ParseUUID(input.UserID, "user_id")
+	if err != nil {
+		return domain.Order{}, err
 	}
 
-	return uc.orders.GetByIDAndUserID(ctx, input.OrderID, input.UserID)
+	return uc.orders.GetByIDAndUserID(ctx, orderID, userID)
 }

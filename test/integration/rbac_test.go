@@ -17,7 +17,7 @@ import (
 func TestViewMarkets_FiltersByUserRoles(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
 	defer cancel()
 
 	resp, err := suite.SpotClient.ViewMarkets(ctx, &spotv1.ViewMarketsRequest{})
@@ -41,7 +41,7 @@ func TestViewMarkets_FiltersByUserRoles(t *testing.T) {
 func TestCreateOrder_RejectsForbiddenMarket(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
 	defer cancel()
 
 	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
@@ -53,7 +53,7 @@ func TestCreateOrder_RejectsForbiddenMarket(t *testing.T) {
 		t.Fatalf("status = %v, want PermissionDenied", status.Code(err))
 	}
 
-	ctxTrader, cancelTrader := context.WithTimeout(integration.AuthContext(context.Background(), "user-1", "trader"), 3*time.Second)
+	ctxTrader, cancelTrader := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID, "trader"), 3*time.Second)
 	defer cancelTrader()
 
 	resp, err := suite.OrderClient.CreateOrder(ctxTrader, &orderv1.CreateOrderRequest{

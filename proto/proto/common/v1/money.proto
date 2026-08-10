@@ -8,6 +8,9 @@ import "buf/validate/validate.proto";
 
 // Money — денежная сумма в USD.
 message Money {
-  string amount = 1 [(buf.validate.field).string.min_len = 1];
+  string amount = 1 [(buf.validate.field).string = {
+    min_len: 1,
+    pattern: "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+  }];
   string currency = 2 [(buf.validate.field).string.const = "USD"];
 }

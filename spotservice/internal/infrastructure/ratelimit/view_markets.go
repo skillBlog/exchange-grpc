@@ -48,6 +48,10 @@ func (l *ViewMarketsLimiter) Allow(userID string) bool {
 		}
 	}
 
+	if len(active) == 0 {
+		delete(l.attempts, userID)
+	}
+
 	if len(active) >= l.maxAttempts {
 		l.attempts[userID] = active
 		return false

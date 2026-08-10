@@ -68,8 +68,8 @@ func NewOrderID() string {
 }
 
 func validateOrderInput(userID, marketID string, side OrderSide, quantity Decimal) error {
-	if strings.TrimSpace(userID) == "" {
-		return fmt.Errorf("%w: user_id is required", ErrInvalidArgument)
+	if _, err := ParseUUID(userID, "user_id"); err != nil {
+		return err
 	}
 	if strings.TrimSpace(marketID) == "" {
 		return fmt.Errorf("%w: market_id is required", ErrInvalidArgument)
@@ -79,6 +79,9 @@ func validateOrderInput(userID, marketID string, side OrderSide, quantity Decima
 	}
 	if strings.TrimSpace(quantity.Value) == "" {
 		return fmt.Errorf("%w: quantity is required", ErrInvalidArgument)
+	}
+	if err := validateDecimalString(quantity.Value, "quantity"); err != nil {
+		return err
 	}
 	return nil
 }

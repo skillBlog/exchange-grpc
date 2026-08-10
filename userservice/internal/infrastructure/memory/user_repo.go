@@ -130,6 +130,7 @@ func (r *RefreshTokenRepository) GetByTokenHash(ctx context.Context, tokenHash s
 }
 
 // Revoke помечает refresh token отозванным.
+// Идемпотентно: отсутствующий или уже отозванный токен не считаются ошибкой.
 func (r *RefreshTokenRepository) Revoke(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -140,7 +141,10 @@ func (r *RefreshTokenRepository) Revoke(ctx context.Context, id string) error {
 
 	token, ok := r.byID[id]
 	if !ok {
-		return domain.ErrNotFound
+		return nil
+	}
+	if token.RevokedAt != nil {
+		return nil
 	}
 	now := time.Now()
 	token.RevokedAt = &now

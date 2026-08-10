@@ -2,6 +2,7 @@ package hub
 
 import (
 	"sync"
+	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -9,20 +10,28 @@ import (
 	"go.uber.org/zap"
 )
 
-const defaultSubscriberBuffer = 256
+const (
+	defaultSubscriberBuffer = 256
+	defaultPublishTimeout   = 100 * time.Millisecond
+)
 
 // UpdateHub — in-memory реализация рассылки обновлений ордеров.
 type UpdateHub struct {
 	mu               sync.RWMutex
 	subscribers      map[string]map[chan application.UpdateEvent]struct{}
 	subscriberBuffer int
+	publishTimeout   time.Duration
 	log              *zap.Logger
 }
 
 // NewUpdateHub создаёт in-memory hub обновлений ордеров.
-func NewUpdateHub(subscriberBuffer int, log *zap.Logger) *UpdateHub {
+// publishTimeout — сколько ждать медленного подписчика; при <= 0 используется 100ms.
+func NewUpdateHub(subscriberBuffer int, log *zap.Logger, publishTimeout time.Duration) *UpdateHub {
 	if subscriberBuffer <= 0 {
 		subscriberBuffer = defaultSubscriberBuffer
+	}
+	if publishTimeout <= 0 {
+		publishTimeout = defaultPublishTimeout
 	}
 	if log == nil {
 		log = logger.NewNop()
@@ -30,28 +39,47 @@ func NewUpdateHub(subscriberBuffer int, log *zap.Logger) *UpdateHub {
 	return &UpdateHub{
 		subscribers:      make(map[string]map[chan application.UpdateEvent]struct{}),
 		subscriberBuffer: subscriberBuffer,
+		publishTimeout:   publishTimeout,
 		log:              log,
 	}
 }
 
 // Publish уведомляет подписчиков о новом статусе ордера.
-func (h *UpdateHub) Publish(orderID string, status domain.OrderStatus) {
+// Блокирующая отправка с timeout; panic внутри recover'ится, чтобы не ронять CreateOrder.
+func (h *UpdateHub) Publish(orderID string, status domain.OrderStatus, updatedAt time.Time) {
 	if h == nil {
 		return
 	}
 
-	event := application.UpdateEvent{OrderID: orderID, Status: status}
-
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for ch := range h.subscribers[orderID] {
-		select {
-		case ch <- event:
-		default:
-			h.log.Warn("order update dropped: subscriber buffer full",
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			h.log.Error("order update publish panic recovered",
 				zap.String("order_id", orderID),
 				zap.String("status", string(status)),
+				zap.Any("panic", recovered),
+			)
+		}
+	}()
+
+	event := application.UpdateEvent{OrderID: orderID, Status: status, UpdatedAt: updatedAt}
+
+	h.mu.RLock()
+	chans := make([]chan application.UpdateEvent, 0, len(h.subscribers[orderID]))
+	for ch := range h.subscribers[orderID] {
+		chans = append(chans, ch)
+	}
+	h.mu.RUnlock()
+
+	for _, ch := range chans {
+		timer := time.NewTimer(h.publishTimeout)
+		select {
+		case ch <- event:
+			timer.Stop()
+		case <-timer.C:
+			h.log.Warn("order update timed out waiting for subscriber",
+				zap.String("order_id", orderID),
+				zap.String("status", string(status)),
+				zap.Duration("timeout", h.publishTimeout),
 			)
 		}
 	}

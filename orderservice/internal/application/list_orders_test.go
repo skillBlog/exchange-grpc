@@ -18,7 +18,7 @@ func TestListOrders_returnsUserOrders(t *testing.T) {
 	for i, marketID := range []string{"BTC-USDT", "ETH-USDT"} {
 		order, err := domain.NewOrder(
 			domain.NewOrderID(),
-			"user-1",
+			"11111111-1111-1111-1111-111111111111",
 			marketID,
 			domain.OrderSideBuy,
 			domain.Money{},
@@ -33,7 +33,7 @@ func TestListOrders_returnsUserOrders(t *testing.T) {
 		}
 	}
 
-	out, err := list.Execute(context.Background(), application.ListOrdersInput{UserID: "user-1"})
+	out, err := list.Execute(context.Background(), application.ListOrdersInput{UserID: "11111111-1111-1111-1111-111111111111"})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -51,7 +51,7 @@ func TestListOrders_paginatesWithLimit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		order, err := domain.NewOrder(
 			domain.NewOrderID(),
-			"user-1",
+			"11111111-1111-1111-1111-111111111111",
 			"BTC-USDT",
 			domain.OrderSideBuy,
 			domain.Money{},
@@ -68,7 +68,7 @@ func TestListOrders_paginatesWithLimit(t *testing.T) {
 	}
 
 	page1, err := list.Execute(context.Background(), application.ListOrdersInput{
-		UserID:   "user-1",
+		UserID:   "11111111-1111-1111-1111-111111111111",
 		PageSize: 2,
 	})
 	if err != nil {
@@ -82,7 +82,7 @@ func TestListOrders_paginatesWithLimit(t *testing.T) {
 	}
 
 	page2, err := list.Execute(context.Background(), application.ListOrdersInput{
-		UserID:    "user-1",
+		UserID:    "11111111-1111-1111-1111-111111111111",
 		PageSize:  2,
 		PageToken: page1.NextPageToken,
 	})

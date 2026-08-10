@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/tracing"
@@ -52,14 +53,15 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 	defer tracing.End(span, &err)
 
 	email := NormalizeEmail(input.Email)
+	password := strings.TrimSpace(input.Password)
 	if err = ValidateEmail(email); err != nil {
 		return RegisterOutput{}, err
 	}
-	if err = ValidatePassword(input.Password); err != nil {
+	if err = ValidatePassword(password); err != nil {
 		return RegisterOutput{}, err
 	}
 
-	hash, err := uc.hasher.Hash(input.Password)
+	hash, err := uc.hasher.Hash(password)
 	if err != nil {
 		return RegisterOutput{}, fmt.Errorf("hash password: %w", err)
 	}

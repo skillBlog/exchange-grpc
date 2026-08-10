@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
 )
@@ -18,7 +19,7 @@ type CreateOrderRateLimiter interface {
 
 // OrderNotifier публикует обновления статуса ордера.
 type OrderNotifier interface {
-	Publish(orderID string, status domain.OrderStatus)
+	Publish(orderID string, status domain.OrderStatus, updatedAt time.Time)
 }
 
 // OrderUpdateHub — pub/sub обновлений ордеров для streaming.

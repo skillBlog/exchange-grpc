@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 
 	"buf.build/go/protovalidate"
 	"google.golang.org/grpc"
@@ -12,11 +13,10 @@ import (
 
 // NewUnaryServerProtoValidate проверяет входящие protobuf-сообщения по buf validate правилам.
 func NewUnaryServerProtoValidate(validator protovalidate.Validator) grpc.UnaryServerInterceptor {
-	if validator == nil {
-		panic("protovalidate validator is required")
-	}
-
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if validator == nil {
+			return nil, status.Error(codes.Internal, "protovalidate validator is not configured")
+		}
 		if msg, ok := req.(proto.Message); ok && msg != nil {
 			if err := validator.Validate(msg); err != nil {
 				return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -26,11 +26,11 @@ func NewUnaryServerProtoValidate(validator protovalidate.Validator) grpc.UnarySe
 	}
 }
 
-// MustNewProtoValidator создаёт protovalidate.Validator или паникует при ошибке инициализации.
-func MustNewProtoValidator() protovalidate.Validator {
+// NewProtoValidator создаёт protovalidate.Validator.
+func NewProtoValidator() (protovalidate.Validator, error) {
 	validator, err := protovalidate.New()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("create proto validator: %w", err)
 	}
-	return validator
+	return validator, nil
 }

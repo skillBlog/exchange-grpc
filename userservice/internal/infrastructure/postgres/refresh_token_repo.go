@@ -53,17 +53,15 @@ func (r *RefreshTokenRepository) GetByTokenHash(ctx context.Context, tokenHash s
 }
 
 // Revoke помечает refresh token отозванным.
+// Идемпотентно: повторный revoke или уже отозванный токен не считаются ошибкой.
 func (r *RefreshTokenRepository) Revoke(ctx context.Context, id string) error {
-	tag, err := r.db.Pool.Exec(ctx, `
+	_, err := r.db.Pool.Exec(ctx, `
 		UPDATE refresh_tokens
 		SET revoked_at = NOW()
 		WHERE id = $1 AND revoked_at IS NULL
 	`, id)
 	if err != nil {
 		return fmt.Errorf("revoke refresh token: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrNotFound
 	}
 	return nil
 }

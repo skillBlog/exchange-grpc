@@ -63,7 +63,11 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init tracing: %w", err)
 	}
-	defer func() { _ = shutdownTracing(context.Background()) }()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), tracing.DefaultShutdownTimeout)
+		defer cancel()
+		_ = shutdownTracing(shutdownCtx)
+	}()
 
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
@@ -81,7 +85,10 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init token service: %w", err)
 	}
-	validator := grpc.MustNewProtoValidator()
+	validator, err := grpc.NewProtoValidator()
+	if err != nil {
+		return fmt.Errorf("init proto validator: %w", err)
+	}
 
 	spotConn, err := spotclient.Dial(runCtx, r.cfg.SpotServiceHost)
 	if err != nil {
@@ -91,7 +98,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	marketClient := spotclient.New(spotConn, r.cfg.SpotGRPCTimeout)
 	orderRepo := postgres.NewOrderRepository(db)
-	idempotencyStore := postgres.NewIdempotencyStore(db)
+	idempotencyStore := postgres.NewIdempotencyStore(db, r.cfg.IdempotencyTTL)
 
 	rateLimitCfg := application.CreateOrderRateLimitConfig{
 		GlobalLimit:  r.cfg.CreateOrderRateLimit.GlobalLimit,
@@ -119,21 +126,24 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		log.Info("create order rate limiter uses redis", zap.String("redis_url", r.cfg.RedisURL))
 	}
 
-	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, r.cfg.OrderHubBufferSize, log)
+	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, r.cfg.OrderHubBufferSize, r.cfg.OrderHubPublishTimeout, log)
 	server := grpcserver.NewServer(orderServices)
 
 	grpcServer := googlegrpc.NewServer(
 		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
 		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
 			grpc.UnaryServerRequestID,
-			grpc.UnaryServerLogging(log),
+			grpc.NewUnaryServerJWTAuth(tokens,
+				grpc_health_v1.Health_Check_FullMethodName,
+				grpc_health_v1.Health_Watch_FullMethodName,
+			),
 			grpc.NewUnaryServerProtoValidate(validator),
-			grpc.NewUnaryServerJWTAuth(tokens),
+			grpc.UnaryServerLogging(log),
 		)),
 		googlegrpc.ChainStreamInterceptor(
 			grpc.StreamServerRequestID,
-			grpc.StreamServerLogging(log),
 			grpc.NewStreamServerJWTAuth(tokens),
+			grpc.StreamServerLogging(log),
 		),
 	)
 	orderv1.RegisterOrderServiceServer(grpcServer, server)
@@ -156,6 +166,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		healthServer,
 		orderv1.OrderService_ServiceDesc.ServiceName,
 		10*time.Second,
+		r.cfg.HealthCheckTimeout,
 		log,
 		criticalChecks,
 		optionalChecks...,

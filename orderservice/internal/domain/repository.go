@@ -16,12 +16,24 @@ type OrderRepository interface {
 	UpdateStatus(ctx context.Context, id string, status OrderStatus, updatedAt time.Time) error
 }
 
-// IdempotencyStore хранит соответствие idempotency_key → order_id.
+// IdempotencyKeyStatus — жизненный цикл idempotency-ключа.
+type IdempotencyKeyStatus string
+
+const (
+	IdempotencyStatusReserved  IdempotencyKeyStatus = "reserved"
+	IdempotencyStatusCompleted IdempotencyKeyStatus = "completed"
+	IdempotencyStatusFailed    IdempotencyKeyStatus = "failed"
+)
+
+// IdempotencyStore хранит соответствие idempotency_key → order_id со статусной моделью.
 type IdempotencyStore interface {
+	// GetOrderID возвращает order_id только для completed и неистёкших ключей.
 	GetOrderID(ctx context.Context, userID, key string) (string, bool, error)
-	// Reserve пытается зарезервировать ключ под orderID до создания ордера.
-	// reserved=true — ключ занят нами; reserved=false и existingOrderID!="" — ключ уже был.
+	// Reserve резервирует ключ под orderID (или перезаписывает failed/expired).
+	// reserved=true — ключ наш; reserved=false и existingOrderID!="" — ключ уже занят.
 	Reserve(ctx context.Context, userID, key, orderID string) (reserved bool, existingOrderID string, err error)
-	// Release снимает резерв ключа, если создание ордера после Reserve не удалось.
-	Release(ctx context.Context, userID, key string) error
+	// Complete помечает ключ завершённым после успешного Create.
+	Complete(ctx context.Context, userID, key string) error
+	// Fail помечает ключ failed после ошибки Create (без DELETE — безопасный retry).
+	Fail(ctx context.Context, userID, key string) error
 }

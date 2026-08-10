@@ -68,5 +68,6 @@ func orderToSummary(order domain.Order) *orderv1.OrderSummary {
 		Quantity:  decimalToProto(order.Quantity),
 		Status:    orderStatusToProto(order.Status),
 		CreatedAt: timestamppb.New(order.CreatedAt),
+		UpdatedAt: timestamppb.New(order.UpdatedAt),
 	}
 }

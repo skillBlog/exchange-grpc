@@ -31,3 +31,19 @@ func TestValidateTransition(t *testing.T) {
 		})
 	}
 }
+
+func TestOrderStatusIsTerminal(t *testing.T) {
+	if domain.OrderStatusCreated.IsTerminal() {
+		t.Fatal("created must not be terminal")
+	}
+	for _, status := range []domain.OrderStatus{
+		domain.OrderStatusFilled,
+		domain.OrderStatusRejected,
+		domain.OrderStatusFailed,
+		domain.OrderStatusCancelled,
+	} {
+		if !status.IsTerminal() {
+			t.Fatalf("%s must be terminal", status)
+		}
+	}
+}

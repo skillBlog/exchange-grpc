@@ -13,7 +13,7 @@ import (
 func TestViewMarkets_ReturnsOnlyActiveMarkets(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1", "trader"), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID, "trader"), 3*time.Second)
 	defer cancel()
 
 	resp, err := suite.SpotClient.ViewMarkets(ctx, &spotv1.ViewMarketsRequest{})

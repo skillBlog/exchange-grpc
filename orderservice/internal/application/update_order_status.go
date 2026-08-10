@@ -34,17 +34,19 @@ func NewUpdateOrderStatus(orders domain.OrderRepository, notifier OrderNotifier)
 
 // Execute обновляет статус ордера, если он принадлежит пользователю.
 func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatusInput) error {
-	if strings.TrimSpace(input.OrderID) == "" {
-		return fmt.Errorf("%w: order_id is required", domain.ErrInvalidArgument)
+	orderID, err := domain.ParseUUID(input.OrderID, "order_id")
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(input.UserID) == "" {
-		return fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
+	userID, err := domain.ParseUUID(input.UserID, "user_id")
+	if err != nil {
+		return err
 	}
 	if strings.TrimSpace(string(input.Status)) == "" {
 		return fmt.Errorf("%w: status is required", domain.ErrInvalidArgument)
 	}
 
-	order, err := uc.orders.GetByIDAndUserID(ctx, input.OrderID, input.UserID)
+	order, err := uc.orders.GetByIDAndUserID(ctx, orderID, userID)
 	if err != nil {
 		return err
 	}
@@ -59,7 +61,7 @@ func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatu
 	}
 
 	if uc.notifier != nil {
-		uc.notifier.Publish(order.ID, input.Status)
+		uc.notifier.Publish(order.ID, input.Status, now)
 	}
 	return nil
 }

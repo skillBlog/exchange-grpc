@@ -51,6 +51,10 @@ func (l *LoginLimiter) Allow(_ context.Context, email string) error {
 		}
 	}
 
+	if len(active) == 0 {
+		delete(l.attempts, email)
+	}
+
 	if len(active) >= l.maxAttempts {
 		l.attempts[email] = active
 		return fmt.Errorf("%w: too many login attempts", domain.ErrRateLimited)

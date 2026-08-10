@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
-	"github.com/exchange-grpc/orderservice/internal/domain"
 	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/shared/grpc"
 )
@@ -101,8 +100,8 @@ func (s *Server) StreamOrderUpdates(req *orderv1.StreamOrderUpdatesRequest, stre
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrInvalidArgument) || errors.Is(err, domain.ErrForbidden) {
-		return toGRPCError(err)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
 	}
-	return err
+	return toGRPCError(err)
 }

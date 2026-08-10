@@ -12,8 +12,11 @@ const (
 	defaultJWTSecret       = "dev-exchange-secret"
 	defaultAccessTokenTTL  = 15 * time.Minute
 	defaultSpotGRPCTimeout = 5 * time.Second
-	defaultOrderHubBuffer  = 256
-	defaultDatabaseURL     = "postgres://exchange:exchange@localhost:5432/orderservice?sslmode=disable"
+	defaultOrderHubBuffer      = 256
+	defaultOrderHubPublishTimeout = 100 * time.Millisecond
+	defaultIdempotencyTTL      = 24 * time.Hour
+	defaultHealthCheckTimeout  = 3 * time.Second
+	defaultDatabaseURL         = "postgres://exchange:exchange@localhost:5432/orderservice?sslmode=disable"
 	defaultMigrationsDir   = "migrations"
 	defaultRedisURL        = "redis://localhost:6379/0"
 	defaultRedisPoolSize   = 10
@@ -28,19 +31,22 @@ const (
 
 // Config содержит runtime-конфигурацию orderservice.
 type Config struct {
-	GRPCAddr           string
-	SpotServiceHost    string
-	JWTSecret          string
-	AccessTokenTTL     time.Duration
-	SpotGRPCTimeout    time.Duration
-	OrderHubBufferSize int
-	DatabaseURL        string
-	MigrationsDir        string
-	RedisURL             string
-	RedisPoolSize        int
-	RedisMaxRetries      int
-	LogLevelAddr         string
-	CreateOrderRateLimit CreateOrderRateLimitConfig
+	GRPCAddr              string
+	SpotServiceHost       string
+	JWTSecret             string
+	AccessTokenTTL        time.Duration
+	SpotGRPCTimeout       time.Duration
+	OrderHubBufferSize    int
+	OrderHubPublishTimeout time.Duration
+	IdempotencyTTL         time.Duration
+	HealthCheckTimeout     time.Duration
+	DatabaseURL            string
+	MigrationsDir         string
+	RedisURL              string
+	RedisPoolSize         int
+	RedisMaxRetries       int
+	LogLevelAddr          string
+	CreateOrderRateLimit  CreateOrderRateLimitConfig
 }
 
 // CreateOrderRateLimitConfig — лимиты CreateOrder из ENV.
@@ -60,9 +66,12 @@ func LoadConfig() Config {
 		SpotServiceHost:    envOrDefault("SPOT_SERVICE_HOST", defaultSpotServiceHost),
 		JWTSecret:          envOrDefault("JWT_SECRET", defaultJWTSecret),
 		AccessTokenTTL:     envDurationOrDefault("JWT_ACCESS_TTL", envDurationOrDefault("JWT_TTL", defaultAccessTokenTTL)),
-		SpotGRPCTimeout:    envDurationOrDefault("SPOT_GRPC_TIMEOUT", defaultSpotGRPCTimeout),
-		OrderHubBufferSize: envIntOrDefault("ORDER_HUB_BUFFER_SIZE", defaultOrderHubBuffer),
-		DatabaseURL:        envOrDefault("ORDER_DATABASE_URL", defaultDatabaseURL),
+		SpotGRPCTimeout:        envDurationOrDefault("SPOT_GRPC_TIMEOUT", defaultSpotGRPCTimeout),
+		OrderHubBufferSize:     envIntOrDefault("ORDER_HUB_BUFFER_SIZE", defaultOrderHubBuffer),
+		OrderHubPublishTimeout: envDurationOrDefault("ORDER_HUB_PUBLISH_TIMEOUT", defaultOrderHubPublishTimeout),
+		IdempotencyTTL:         envDurationOrDefault("IDEMPOTENCY_TTL", defaultIdempotencyTTL),
+		HealthCheckTimeout:     envDurationOrDefault("HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
+		DatabaseURL:            envOrDefault("ORDER_DATABASE_URL", defaultDatabaseURL),
 		MigrationsDir:      envOrDefault("ORDER_MIGRATIONS_DIR", defaultMigrationsDir),
 		RedisURL:           envOrDefault("REDIS_URL", defaultRedisURL),
 		RedisPoolSize:      envIntOrDefault("REDIS_POOL_SIZE", defaultRedisPoolSize),
@@ -80,15 +89,15 @@ func LoadConfig() Config {
 }
 
 func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
+	if v, ok := os.LookupEnv(key); ok {
 		return v
 	}
 	return fallback
 }
 
 func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
-	value := os.Getenv(key)
-	if value == "" {
+	value, ok := os.LookupEnv(key)
+	if !ok || value == "" {
 		return fallback
 	}
 	parsed, err := time.ParseDuration(value)
@@ -99,8 +108,8 @@ func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
 }
 
 func envIntOrDefault(key string, fallback int) int {
-	value := os.Getenv(key)
-	if value == "" {
+	value, ok := os.LookupEnv(key)
+	if !ok || value == "" {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)

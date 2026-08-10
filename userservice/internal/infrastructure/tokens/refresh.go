@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -65,6 +66,7 @@ func (s *RefreshTokenService) Validate(ctx context.Context, raw string) (string,
 }
 
 // Revoke отзывает refresh token.
+// Идемпотентно: неизвестный или уже отозванный токен не считается ошибкой.
 func (s *RefreshTokenService) Revoke(ctx context.Context, raw string) error {
 	if raw == "" {
 		return fmt.Errorf("%w: refresh token is required", domain.ErrInvalidArgument)
@@ -72,6 +74,9 @@ func (s *RefreshTokenService) Revoke(ctx context.Context, raw string) error {
 
 	stored, err := s.repo.GetByTokenHash(ctx, hashToken(raw))
 	if err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) || errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
 		return err
 	}
 	return s.repo.Revoke(ctx, stored.ID)

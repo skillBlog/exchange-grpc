@@ -90,14 +90,19 @@ func orderToGetOrderStatusResponse(order domain.Order) *orderv1.GetOrderStatusRe
 		Quantity:  decimalToProto(order.Quantity),
 		Status:    orderStatusToProto(order.Status),
 		CreatedAt: timestamppb.New(order.CreatedAt),
+		UpdatedAt: timestamppb.New(order.UpdatedAt),
 	}
 }
 
 func orderUpdateToProto(update application.UpdateEvent) *orderv1.OrderUpdate {
-	return &orderv1.OrderUpdate{
+	msg := &orderv1.OrderUpdate{
 		OrderId: update.OrderID,
 		Status:  orderStatusToProto(update.Status),
 	}
+	if !update.UpdatedAt.IsZero() {
+		msg.UpdatedAt = timestamppb.New(update.UpdatedAt)
+	}
+	return msg
 }
 
 func normalizeOrderID(orderID string) string {

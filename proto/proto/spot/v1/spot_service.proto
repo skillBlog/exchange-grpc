@@ -26,7 +26,12 @@ message ViewMarketsResponse {
 }
 
 message GetMarketRequest {
-  string market_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Идентификатор рынка — торговый символ (BTC-USDT), не UUID.
+  string market_id = 1 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 64,
+    pattern: "^[A-Z0-9]+-[A-Z0-9]+$"
+  }];
 }
 
 message GetMarketResponse {

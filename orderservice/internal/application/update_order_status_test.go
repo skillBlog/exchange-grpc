@@ -14,7 +14,7 @@ import (
 func TestUpdateOrderStatus_rejectsInvalidTransition(t *testing.T) {
 	repo := memory.NewOrderRepository()
 	now := time.Now().UTC()
-	order, err := domain.NewOrder(domain.NewOrderID(), "user-1", "BTC-USDT", domain.OrderSideBuy, domain.Money{}, mustDecimal(t, "1"), now)
+	order, err := domain.NewOrder(domain.NewOrderID(), "11111111-1111-1111-1111-111111111111", "BTC-USDT", domain.OrderSideBuy, domain.Money{}, mustDecimal(t, "1"), now)
 	if err != nil {
 		t.Fatalf("NewOrder() error = %v", err)
 	}
@@ -27,7 +27,7 @@ func TestUpdateOrderStatus_rejectsInvalidTransition(t *testing.T) {
 	uc := application.NewUpdateOrderStatus(repo, nil)
 	err = uc.Execute(context.Background(), application.UpdateOrderStatusInput{
 		OrderID: order.ID,
-		UserID:  "user-1",
+		UserID:  "11111111-1111-1111-1111-111111111111",
 		Status:  domain.OrderStatusCreated,
 	})
 	if !errors.Is(err, domain.ErrInvalidArgument) {

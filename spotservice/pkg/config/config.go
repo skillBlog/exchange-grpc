@@ -15,6 +15,7 @@ const (
 	defaultMarketCacheTTL        = 30 * time.Second
 	defaultViewMarketsRateLimit  = 30
 	defaultViewMarketsRateWindow = time.Minute
+	defaultHealthCheckTimeout    = 3 * time.Second
 )
 
 // Config содержит runtime-конфигурацию spotservice.
@@ -27,6 +28,7 @@ type Config struct {
 	MarketCacheTTL        time.Duration
 	ViewMarketsRateLimit  int
 	ViewMarketsRateWindow time.Duration
+	HealthCheckTimeout    time.Duration
 	LogLevelAddr          string
 }
 
@@ -41,20 +43,21 @@ func LoadConfig() Config {
 		MarketCacheTTL:        envDurationOrDefault("MARKET_CACHE_TTL", defaultMarketCacheTTL),
 		ViewMarketsRateLimit:  envIntOrDefault("VIEW_MARKETS_RATE_LIMIT", defaultViewMarketsRateLimit),
 		ViewMarketsRateWindow: envDurationOrDefault("VIEW_MARKETS_RATE_WINDOW", defaultViewMarketsRateWindow),
+		HealthCheckTimeout:    envDurationOrDefault("HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 		LogLevelAddr:          os.Getenv("LOG_LEVEL_ADDR"),
 	}
 }
 
 func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
+	if v, ok := os.LookupEnv(key); ok {
 		return v
 	}
 	return fallback
 }
 
 func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
-	value := os.Getenv(key)
-	if value == "" {
+	value, ok := os.LookupEnv(key)
+	if !ok || value == "" {
 		return fallback
 	}
 	parsed, err := time.ParseDuration(value)
@@ -65,8 +68,8 @@ func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
 }
 
 func envIntOrDefault(key string, fallback int) int {
-	value := os.Getenv(key)
-	if value == "" {
+	value, ok := os.LookupEnv(key)
+	if !ok || value == "" {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)

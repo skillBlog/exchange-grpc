@@ -68,7 +68,7 @@ func NewOrder(t *testing.T, spotConn *googlegrpc.ClientConn, tokens *sessionvali
 		AdminLimit:   1000,
 		UserWindow:   time.Minute,
 	})
-	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, 256, nil)
+	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, 256, 0, nil)
 	orderServer := grpcserver.NewServer(orderServices)
 
 	listener := bufconn.Listen(bufSize)

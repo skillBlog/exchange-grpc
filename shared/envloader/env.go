@@ -7,7 +7,8 @@ import (
 )
 
 // Load читает .env-файлы и выставляет переменные окружения,
-// не перезаписывая уже заданные значения (os.Getenv / compose / CI имеют приоритет).
+// не перезаписывая уже заданные значения (os.LookupEnv / compose / CI имеют приоритет,
+// включая явно заданную пустую строку).
 // Отсутствие файла — не ошибка.
 func Load(paths ...string) {
 	if len(paths) == 0 {
@@ -38,7 +39,7 @@ func loadFile(path string) error {
 		if !ok {
 			continue
 		}
-		if os.Getenv(key) != "" {
+		if _, exists := os.LookupEnv(key); exists {
 			continue
 		}
 		_ = os.Setenv(key, value)

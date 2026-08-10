@@ -65,16 +65,21 @@ func (r *OrderRepository) GetByID(ctx context.Context, id string) (domain.Order,
 	return order, err
 }
 
-// GetByIDAndUserID возвращает ордер при совпадении владельца.
+// GetByIDAndUserID возвращает ордер при совпадении владельца (один запрос к БД).
 func (r *OrderRepository) GetByIDAndUserID(ctx context.Context, orderID, userID string) (domain.Order, error) {
-	order, err := r.GetByID(ctx, orderID)
-	if err != nil {
-		return domain.Order{}, err
+	row := r.db.Pool.QueryRow(ctx, `
+		SELECT id, user_id, market_id, side,
+			price_amount::text, price_currency, quantity::text,
+			status, created_at, updated_at
+		FROM orders
+		WHERE id = $1 AND user_id = $2
+	`, orderID, userID)
+
+	order, err := scanOrder(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Order{}, fmt.Errorf("%w: order %q", domain.ErrNotFound, orderID)
 	}
-	if order.UserID != userID {
-		return domain.Order{}, domain.ErrForbidden
-	}
-	return order, nil
+	return order, err
 }
 
 // ListByUserID возвращает страницу ордеров пользователя по курсору id.

@@ -13,6 +13,9 @@ import (
 
 var testTokenService = spottestserver.TestTokenService()
 
+// TestUserID — стабильный UUID пользователя для интеграционных тестов.
+const TestUserID = "11111111-1111-1111-1111-111111111111"
+
 // Suite запускает Spot и Order gRPC-сервисы in-process для интеграционных тестов.
 type Suite struct {
 	SpotClient    spotv1.SpotServiceClient

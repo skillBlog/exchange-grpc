@@ -21,6 +21,16 @@ func (s OrderStatus) CanTransitionTo(next OrderStatus) bool {
 	}
 }
 
+// IsTerminal сообщает, что ордер больше не меняет статус.
+func (s OrderStatus) IsTerminal() bool {
+	switch s {
+	case OrderStatusFilled, OrderStatusRejected, OrderStatusFailed, OrderStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
 // ValidateTransition возвращает ошибку при недопустимом переходе статуса.
 func ValidateTransition(from, to OrderStatus) error {
 	if from.CanTransitionTo(to) {

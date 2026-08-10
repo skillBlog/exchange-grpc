@@ -31,18 +31,19 @@ func main() {
 	orderSide := flag.String("order-side", "buy", "order side: buy or sell")
 	price := flag.String("price", "", "optional order price")
 	quantity := flag.String("quantity", "", "order quantity")
+	idempotencyKey := flag.String("idempotency-key", "", "idempotency key (generated when empty)")
 	orderAddr := flag.String("addr", cfg.OrderServiceHost, "OrderService gRPC address")
 	userAddr := flag.String("user-addr", cfg.UserServiceHost, "UserService gRPC address")
 	requestID := flag.String("request-id", "", "x-request-id (generated when empty)")
 	flag.Parse()
 
-	if err := run(*email, *password, *register, *marketID, *orderSide, *price, *quantity, *orderAddr, *userAddr, *requestID); err != nil {
+	if err := run(*email, *password, *register, *marketID, *orderSide, *price, *quantity, *idempotencyKey, *orderAddr, *userAddr, *requestID); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(email, password string, register bool, marketID, orderSide, price, quantity, orderAddr, userAddr, requestID string) error {
+func run(email, password string, register bool, marketID, orderSide, price, quantity, idempotencyKey, orderAddr, userAddr, requestID string) error {
 	if strings.TrimSpace(email) == "" {
 		return fmt.Errorf("email is required")
 	}
@@ -63,6 +64,9 @@ func run(email, password string, register bool, marketID, orderSide, price, quan
 
 	if requestID == "" {
 		requestID = uuid.NewString()
+	}
+	if strings.TrimSpace(idempotencyKey) == "" {
+		idempotencyKey = uuid.NewString()
 	}
 
 	ctx, cancel := context.WithTimeout(
@@ -119,10 +123,11 @@ func run(email, password string, register bool, marketID, orderSide, price, quan
 
 	client := orderv1.NewOrderServiceClient(orderConn)
 	resp, err := client.CreateOrder(ctx, &orderv1.CreateOrderRequest{
-		MarketId: marketID,
-		Side:     protoSide,
-		Price:    mapper.MoneyFromString(price),
-		Quantity: mapper.DecimalFromString(quantity),
+		MarketId:       marketID,
+		Side:           protoSide,
+		Price:          mapper.MoneyFromString(price),
+		Quantity:       mapper.DecimalFromString(quantity),
+		IdempotencyKey: idempotencyKey,
 	})
 	if err != nil {
 		return fmt.Errorf("create order: %w", err)
@@ -130,6 +135,7 @@ func run(email, password string, register bool, marketID, orderSide, price, quan
 
 	fmt.Printf("order_id: %s\n", resp.GetOrderId())
 	fmt.Printf("status: %s\n", resp.GetStatus().String())
+	fmt.Printf("idempotency_key: %s\n", idempotencyKey)
 	fmt.Printf("request_id: %s\n", requestID)
 	return nil
 }

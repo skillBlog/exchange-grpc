@@ -9,7 +9,10 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-const defaultCheckInterval = 10 * time.Second
+const (
+	defaultCheckInterval = 10 * time.Second
+	defaultCheckTimeout  = 3 * time.Second
+)
 
 // Checker проверяет готовность зависимости сервиса.
 type Checker func(ctx context.Context) error
@@ -21,21 +24,27 @@ type Watcher struct {
 	criticalChecks []Checker
 	optionalChecks []Checker
 	interval       time.Duration
+	checkTimeout   time.Duration
 	log            *zap.Logger
 }
 
 // NewWatcher создаёт health watcher.
 // criticalChecks валят статус сервиса; optionalChecks только логируются (graceful degradation).
+// checkTimeout — таймаут одного цикла проверок; при <= 0 используется 3s.
 func NewWatcher(
 	server *health.Server,
 	serviceName string,
 	interval time.Duration,
+	checkTimeout time.Duration,
 	log *zap.Logger,
 	criticalChecks []Checker,
 	optionalChecks ...Checker,
 ) *Watcher {
 	if interval <= 0 {
 		interval = defaultCheckInterval
+	}
+	if checkTimeout <= 0 {
+		checkTimeout = defaultCheckTimeout
 	}
 	if log == nil {
 		log = zap.NewNop()
@@ -46,6 +55,7 @@ func NewWatcher(
 		criticalChecks: append([]Checker(nil), criticalChecks...),
 		optionalChecks: append([]Checker(nil), optionalChecks...),
 		interval:       interval,
+		checkTimeout:   checkTimeout,
 		log:            log,
 	}
 }
@@ -67,7 +77,7 @@ func (w *Watcher) Run(ctx context.Context) {
 
 func (w *Watcher) update(ctx context.Context) {
 	status := healthpb.HealthCheckResponse_SERVING
-	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, w.checkTimeout)
 	defer cancel()
 
 	for _, check := range w.criticalChecks {

@@ -29,7 +29,7 @@ message RegisterResponse {
 
 message LoginRequest {
   string email = 1 [(buf.validate.field).string = {email: true, max_len: 254}];
-  string password = 2 [(buf.validate.field).string = {min_len: 1, max_len: 128}];
+  string password = 2 [(buf.validate.field).string = {min_len: 8, max_len: 128}];
 }
 
 message LoginResponse {

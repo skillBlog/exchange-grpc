@@ -64,7 +64,11 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init tracing: %w", err)
 	}
-	defer func() { _ = shutdownTracing(context.Background()) }()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), tracing.DefaultShutdownTimeout)
+		defer cancel()
+		_ = shutdownTracing(shutdownCtx)
+	}()
 
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
@@ -82,7 +86,10 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init access token service: %w", err)
 	}
-	validator := grpc.MustNewProtoValidator()
+	validator, err := grpc.NewProtoValidator()
+	if err != nil {
+		return fmt.Errorf("init proto validator: %w", err)
+	}
 
 	userRepo := postgres.NewUserRepository(db)
 	refreshRepo := postgres.NewRefreshTokenRepository(db)
@@ -117,14 +124,16 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
 		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
 			grpc.UnaryServerRequestID,
-			grpc.UnaryServerLogging(log),
-			grpc.NewUnaryServerProtoValidate(validator),
 			grpc.NewUnaryServerJWTAuth(accessTokens,
 				userv1.UserService_Register_FullMethodName,
 				userv1.UserService_Login_FullMethodName,
 				userv1.UserService_RefreshToken_FullMethodName,
 				userv1.UserService_Logout_FullMethodName,
+				grpc_health_v1.Health_Check_FullMethodName,
+				grpc_health_v1.Health_Watch_FullMethodName,
 			),
+			grpc.NewUnaryServerProtoValidate(validator),
+			grpc.UnaryServerLogging(log),
 		)),
 	)
 	userv1.RegisterUserServiceServer(grpcServer, server)
@@ -147,6 +156,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		healthServer,
 		userv1.UserService_ServiceDesc.ServiceName,
 		10*time.Second,
+		r.cfg.HealthCheckTimeout,
 		log,
 		criticalChecks,
 		optionalChecks...,

@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -43,9 +42,17 @@ func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (out L
 	ctx, span := tracing.Start(ctx, "order.ListOrders")
 	defer tracing.End(span, &err)
 
-	userID := strings.TrimSpace(input.UserID)
-	if userID == "" {
-		return ListOrdersOutput{}, fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
+	userID, err := domain.ParseUUID(input.UserID, "user_id")
+	if err != nil {
+		return ListOrdersOutput{}, err
+	}
+
+	pageToken := strings.TrimSpace(input.PageToken)
+	if pageToken != "" {
+		pageToken, err = domain.ParseUUID(pageToken, "page_token")
+		if err != nil {
+			return ListOrdersOutput{}, err
+		}
 	}
 
 	pageSize := input.PageSize
@@ -57,7 +64,7 @@ func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (out L
 	}
 
 	// Запрашиваем pageSize+1, чтобы понять, есть ли следующая страница.
-	orders, err := uc.orders.ListByUserID(ctx, userID, int(pageSize)+1, strings.TrimSpace(input.PageToken))
+	orders, err := uc.orders.ListByUserID(ctx, userID, int(pageSize)+1, pageToken)
 	if err != nil {
 		return ListOrdersOutput{}, err
 	}

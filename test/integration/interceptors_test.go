@@ -14,7 +14,7 @@ import (
 func TestStreamOrderUpdates_receivesMultipleUpdates(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 5*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 5*time.Second)
 	defer cancel()
 
 	created, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
@@ -45,7 +45,7 @@ func TestStreamOrderUpdates_receivesMultipleUpdates(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		_ = ordertestserver.UpdateOrderStatus(context.Background(), suite.OrderServices, ordertestserver.UpdateOrderStatusInput{
 			OrderID: created.GetOrderId(),
-			UserID:  "user-1",
+			UserID:  integration.TestUserID,
 			Status:  ordertestserver.OrderStatusFilled,
 		})
 	}()

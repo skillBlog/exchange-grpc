@@ -8,6 +8,7 @@ import (
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/shared/tracing"
+	"go.uber.org/zap"
 )
 
 // CreateOrderInput — параметры создания ордера.
@@ -34,6 +35,7 @@ type CreateOrder struct {
 	idempotency domain.IdempotencyStore
 	notifier    OrderNotifier
 	limiter     CreateOrderRateLimiter
+	log         *zap.Logger
 	now         func() time.Time
 }
 
@@ -44,13 +46,18 @@ func NewCreateOrder(
 	idempotency domain.IdempotencyStore,
 	notifier OrderNotifier,
 	limiter CreateOrderRateLimiter,
+	log *zap.Logger,
 ) *CreateOrder {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &CreateOrder{
 		orders:      orders,
 		markets:     markets,
 		idempotency: idempotency,
 		notifier:    notifier,
 		limiter:     limiter,
+		log:         log,
 		now:         time.Now,
 	}
 }
@@ -64,8 +71,8 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 
 	userID := strings.TrimSpace(input.UserID)
 	marketID := strings.TrimSpace(input.MarketID)
-	if userID == "" {
-		return CreateOrderOutput{}, fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
+	if _, err = domain.ParseUUID(userID, "user_id"); err != nil {
+		return CreateOrderOutput{}, err
 	}
 	if marketID == "" {
 		return CreateOrderOutput{}, fmt.Errorf("%w: market_id is required", domain.ErrInvalidArgument)
@@ -83,14 +90,14 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 		}
 	}
 
+	if err = uc.markets.EnsureMarketAvailable(ctx, input.MarketID, input.UserRoles); err != nil {
+		return CreateOrderOutput{}, err
+	}
+
 	if uc.limiter != nil {
 		if err = uc.limiter.Allow(ctx, input.UserID, input.UserRoles); err != nil {
 			return CreateOrderOutput{}, err
 		}
-	}
-
-	if err = uc.markets.EnsureMarketAvailable(ctx, input.MarketID, input.UserRoles); err != nil {
-		return CreateOrderOutput{}, err
 	}
 
 	now := uc.now().UTC()
@@ -120,14 +127,29 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 
 	if err = uc.orders.Create(ctx, order); err != nil {
 		if idempotencyKey != "" && uc.idempotency != nil {
-			_ = uc.idempotency.Release(ctx, input.UserID, idempotencyKey)
+			_ = uc.idempotency.Fail(ctx, input.UserID, idempotencyKey)
 		}
 		return CreateOrderOutput{}, err
 	}
 
-	if uc.notifier != nil {
-		uc.notifier.Publish(order.ID, order.Status)
+	if idempotencyKey != "" && uc.idempotency != nil {
+		if completeErr := uc.idempotency.Complete(ctx, input.UserID, idempotencyKey); completeErr != nil {
+			return CreateOrderOutput{}, completeErr
+		}
 	}
+
+	if uc.notifier != nil {
+		uc.notifier.Publish(order.ID, order.Status, order.UpdatedAt)
+	}
+
+	uc.log.Info("order created",
+		zap.String("order_id", order.ID),
+		zap.String("user_id", order.UserID),
+		zap.String("market_id", order.MarketID),
+		zap.String("side", string(order.Side)),
+		zap.String("status", string(order.Status)),
+		zap.String("quantity", order.Quantity.Value),
+	)
 
 	return CreateOrderOutput{
 		OrderID: order.ID,
@@ -140,5 +162,10 @@ func (uc *CreateOrder) existingOrder(ctx context.Context, orderID, userID string
 	if err != nil {
 		return CreateOrderOutput{}, err
 	}
+	uc.log.Info("order create idempotent hit",
+		zap.String("order_id", order.ID),
+		zap.String("user_id", userID),
+		zap.String("status", string(order.Status)),
+	)
 	return CreateOrderOutput{OrderID: order.ID, Status: order.Status}, nil
 }

@@ -12,39 +12,40 @@ import (
 )
 
 func TestUpdateHub_doubleUnsubscribeDoesNotPanic(t *testing.T) {
-	orderHub := hub.NewUpdateHub(4, logger.NewNop())
+	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
 	_, unsubscribe := orderHub.Subscribe("order-1")
 	unsubscribe()
 	unsubscribe()
 }
 
-func TestUpdateHub_publishDroppedEventIsLogged(t *testing.T) {
+func TestUpdateHub_publishTimeoutIsLogged(t *testing.T) {
 	core, observed := observer.New(zap.WarnLevel)
-	orderHub := hub.NewUpdateHub(1, zap.New(core))
+	orderHub := hub.NewUpdateHub(1, zap.New(core), 20*time.Millisecond)
 
 	_, unsubscribe := orderHub.Subscribe("order-1")
 	defer unsubscribe()
 
-	orderHub.Publish("order-1", domain.OrderStatusCreated)
-	orderHub.Publish("order-1", domain.OrderStatusFilled)
+	now := time.Now().UTC()
+	orderHub.Publish("order-1", domain.OrderStatusCreated, now)
+	orderHub.Publish("order-1", domain.OrderStatusFilled, now)
 
 	if observed.Len() != 1 {
 		t.Fatalf("log entries = %d, want 1", observed.Len())
 	}
 	entry := observed.All()[0]
-	if entry.Message != "order update dropped: subscriber buffer full" {
+	if entry.Message != "order update timed out waiting for subscriber" {
 		t.Fatalf("message = %q", entry.Message)
 	}
 }
 
 func TestUpdateHub_subscriberReceivesPublishedEvents(t *testing.T) {
-	orderHub := hub.NewUpdateHub(4, logger.NewNop())
+	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
 	updates, unsubscribe := orderHub.Subscribe("order-1")
 	defer unsubscribe()
 
-	orderHub.Publish("order-1", domain.OrderStatusFilled)
+	orderHub.Publish("order-1", domain.OrderStatusFilled, time.Now().UTC())
 
 	select {
 	case event := <-updates:

@@ -15,11 +15,11 @@ import (
 
 func TestStreamOrderUpdates_sendFailureUnsubscribesWithoutPanic(t *testing.T) {
 	repo := memory.NewOrderRepository()
-	orderHub := hub.NewUpdateHub(4, logger.NewNop())
+	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 	uc := application.NewStreamOrderUpdates(repo, orderHub)
 
 	now := time.Now().UTC()
-	order, err := domain.NewOrder(domain.NewOrderID(), "user-1", "BTC-USDT", domain.OrderSideBuy, domain.Money{}, mustDecimal(t, "1"), now)
+	order, err := domain.NewOrder(domain.NewOrderID(), "11111111-1111-1111-1111-111111111111", "BTC-USDT", domain.OrderSideBuy, domain.Money{}, mustDecimal(t, "1"), now)
 	if err != nil {
 		t.Fatalf("NewOrder() error = %v", err)
 	}
@@ -30,7 +30,7 @@ func TestStreamOrderUpdates_sendFailureUnsubscribesWithoutPanic(t *testing.T) {
 	sendErr := errors.New("send failed")
 	err = uc.Execute(context.Background(), application.StreamOrderUpdatesInput{
 		OrderID: order.ID,
-		UserID:  "user-1",
+		UserID:  "11111111-1111-1111-1111-111111111111",
 	}, func(update application.UpdateEvent) error {
 		if update.Status == domain.OrderStatusCreated {
 			return sendErr
@@ -42,5 +42,36 @@ func TestStreamOrderUpdates_sendFailureUnsubscribesWithoutPanic(t *testing.T) {
 	}
 
 	// Повторная отписка через defer не должна паниковать; hub не должен держать подписчика.
-	orderHub.Publish(order.ID, domain.OrderStatusFilled)
+	orderHub.Publish(order.ID, domain.OrderStatusFilled, time.Now().UTC())
+}
+
+func TestStreamOrderUpdates_closesOnTerminalStatus(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
+	uc := application.NewStreamOrderUpdates(repo, orderHub)
+
+	now := time.Now().UTC()
+	order, err := domain.NewOrder(domain.NewOrderID(), "11111111-1111-1111-1111-111111111111", "BTC-USDT", domain.OrderSideBuy, domain.Money{}, mustDecimal(t, "1"), now)
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	order.Status = domain.OrderStatusFilled
+	if err := repo.Create(context.Background(), order); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	var sent []domain.OrderStatus
+	err = uc.Execute(context.Background(), application.StreamOrderUpdatesInput{
+		OrderID: order.ID,
+		UserID:  "11111111-1111-1111-1111-111111111111",
+	}, func(update application.UpdateEvent) error {
+		sent = append(sent, update.Status)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(sent) != 1 || sent[0] != domain.OrderStatusFilled {
+		t.Fatalf("sent = %v, want [filled]", sent)
+	}
 }

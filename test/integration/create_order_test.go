@@ -15,7 +15,7 @@ import (
 func TestCreateOrder_RejectsInactiveMarket(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
 	defer cancel()
 
 	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
@@ -31,7 +31,7 @@ func TestCreateOrder_RejectsInactiveMarket(t *testing.T) {
 func TestCreateOrder_RejectsDeletedMarket(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
 	defer cancel()
 
 	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
@@ -47,7 +47,7 @@ func TestCreateOrder_RejectsDeletedMarket(t *testing.T) {
 func TestCreateOrder_RejectsUnknownMarket(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
 	defer cancel()
 
 	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
@@ -63,7 +63,7 @@ func TestCreateOrder_RejectsUnknownMarket(t *testing.T) {
 func TestCreateOrder_SucceedsForActiveMarket(t *testing.T) {
 	suite := integration.NewSuite(t)
 
-	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), "user-1"), 3*time.Second)
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
 	defer cancel()
 
 	resp, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{

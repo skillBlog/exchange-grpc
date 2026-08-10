@@ -2,8 +2,12 @@ package domain
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// decimalPattern — неотрицательное десятичное число без экспоненты (например 10, 10.5, 0.01).
+var decimalPattern = regexp.MustCompile(`^(?:0|[1-9]\d*)(?:\.\d+)?$`)
 
 // Money — денежная сумма в USD.
 type Money struct {
@@ -16,6 +20,9 @@ func NewMoney(amount, currency string) (Money, error) {
 	amount = strings.TrimSpace(amount)
 	if amount == "" {
 		return Money{}, nil
+	}
+	if err := validateDecimalString(amount, "amount"); err != nil {
+		return Money{}, err
 	}
 
 	currency = strings.TrimSpace(strings.ToUpper(currency))
@@ -38,11 +45,21 @@ type Decimal struct {
 	Value string
 }
 
-// NewDecimal создаёт Decimal с валидацией.
+// NewDecimal создаёт Decimal с валидацией числового формата.
 func NewDecimal(value string) (Decimal, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return Decimal{}, fmt.Errorf("%w: quantity is required", ErrInvalidArgument)
 	}
+	if err := validateDecimalString(value, "quantity"); err != nil {
+		return Decimal{}, err
+	}
 	return Decimal{Value: value}, nil
+}
+
+func validateDecimalString(value, field string) error {
+	if !decimalPattern.MatchString(value) {
+		return fmt.Errorf("%w: invalid %s %q", ErrInvalidArgument, field, value)
+	}
+	return nil
 }
