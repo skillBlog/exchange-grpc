@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // UserRepository хранит учётные записи пользователей.
 type UserRepository interface {
@@ -14,4 +17,8 @@ type RefreshTokenRepository interface {
 	Save(ctx context.Context, token RefreshToken) error
 	GetByTokenHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	Revoke(ctx context.Context, id string) error
+	// Rotate атомарно отзывает токен с oldTokenHash и сохраняет newToken.
+	// Возвращает ErrUnauthorized, если старый токен отсутствует, просрочен,
+	// уже отозван или принадлежит другому пользователю.
+	Rotate(ctx context.Context, oldTokenHash string, now time.Time, newToken RefreshToken) error
 }

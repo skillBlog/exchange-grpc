@@ -18,6 +18,7 @@ type RefreshTokenManager interface {
 	Issue(ctx context.Context, userID string) (string, error)
 	Validate(ctx context.Context, token string) (userID string, err error)
 	Revoke(ctx context.Context, token string) error
+	Rotate(ctx context.Context, oldToken, userID string) (newToken string, err error)
 }
 
 // LoginRateLimiter ограничивает частоту попыток входа по email.

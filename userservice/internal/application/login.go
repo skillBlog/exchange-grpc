@@ -2,17 +2,26 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	sharedgrpc "github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
+	"go.uber.org/zap"
+)
+
+const (
+	loginFailReasonUserNotFound = "user-not-found"
+	loginFailReasonBadPassword  = "bad-password"
 )
 
 // LoginInput — параметры входа пользователя.
 type LoginInput struct {
-	Email    string
-	Password string
+	Email      string
+	Password   string
+	ClientAddr string
 }
 
 // LoginOutput — результат успешного входа.
@@ -23,11 +32,12 @@ type LoginOutput struct {
 
 // Login аутентифицирует пользователя и выпускает токены.
 type Login struct {
-	users        domain.UserRepository
-	hasher       PasswordHasher
-	accessTokens AccessTokenIssuer
+	users         domain.UserRepository
+	hasher        PasswordHasher
+	accessTokens  AccessTokenIssuer
 	refreshTokens RefreshTokenManager
-	limiter      LoginRateLimiter
+	limiter       LoginRateLimiter
+	log           *zap.Logger
 }
 
 // NewLogin создаёт use case Login.
@@ -37,13 +47,18 @@ func NewLogin(
 	accessTokens AccessTokenIssuer,
 	refreshTokens RefreshTokenManager,
 	limiter LoginRateLimiter,
+	log *zap.Logger,
 ) *Login {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &Login{
 		users:         users,
 		hasher:        hasher,
 		accessTokens:  accessTokens,
 		refreshTokens: refreshTokens,
 		limiter:       limiter,
+		log:           log,
 	}
 }
 
@@ -69,10 +84,15 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 
 	user, err := uc.users.GetByEmail(ctx, email)
 	if err != nil {
-		return LoginOutput{}, domain.ErrUnauthorized
+		if errors.Is(err, domain.ErrUnauthorized) || errors.Is(err, domain.ErrNotFound) {
+			uc.logFailedLogin(ctx, email, input.ClientAddr, loginFailReasonUserNotFound)
+			return LoginOutput{}, domain.ErrUnauthorized
+		}
+		return LoginOutput{}, err
 	}
 
 	if err = uc.hasher.Compare(user.PasswordHash, password); err != nil {
+		uc.logFailedLogin(ctx, email, input.ClientAddr, loginFailReasonBadPassword)
 		return LoginOutput{}, domain.ErrUnauthorized
 	}
 
@@ -90,4 +110,18 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
+}
+
+func (uc *Login) logFailedLogin(ctx context.Context, email, clientAddr, reason string) {
+	fields := []zap.Field{
+		zap.String("email", email),
+		zap.String("reason", reason),
+	}
+	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
+		fields = append(fields, zap.String("request_id", requestID))
+	}
+	if clientAddr != "" {
+		fields = append(fields, zap.String("client_addr", clientAddr))
+	}
+	uc.log.Warn("login failed", fields...)
 }

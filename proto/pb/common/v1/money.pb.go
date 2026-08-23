@@ -23,6 +23,7 @@ const (
 )
 
 // Money — денежная сумма в USD.
+// Если сообщение передано, amount строго больше нуля.
 type Money struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Amount        string                 `protobuf:"bytes,1,opt,name=amount,proto3" json:"amount,omitempty"`
@@ -79,9 +80,9 @@ var File_common_v1_money_proto protoreflect.FileDescriptor
 
 const file_common_v1_money_proto_rawDesc = "" +
 	"\n" +
-	"\x15common/v1/money.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"l\n" +
-	"\x05Money\x12;\n" +
-	"\x06amount\x18\x01 \x01(\tB#\xbaH r\x1e\x10\x012\x1a^(?:0|[1-9]\\d*)(?:\\.\\d+)?$R\x06amount\x12&\n" +
+	"\x15common/v1/money.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"|\n" +
+	"\x05Money\x12K\n" +
+	"\x06amount\x18\x01 \x01(\tB3\xbaH0r.\x10\x012*^(?:0\\.(?:0*[1-9]\\d*)|[1-9]\\d*(?:\\.\\d+)?)$R\x06amount\x12&\n" +
 	"\bcurrency\x18\x02 \x01(\tB\n" +
 	"\xbaH\ar\x05\n" +
 	"\x03USDR\bcurrencyB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"

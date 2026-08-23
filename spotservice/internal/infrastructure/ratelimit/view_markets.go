@@ -1,10 +1,13 @@
 package ratelimit
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/exchange-grpc/spotservice/internal/application"
+	"github.com/exchange-grpc/spotservice/internal/domain"
 )
 
 // ViewMarketsLimiter ограничивает частоту ViewMarkets по user_id.
@@ -32,8 +35,8 @@ func NewViewMarketsLimiter(maxAttempts int, window time.Duration) *ViewMarketsLi
 	}
 }
 
-// Allow возвращает true, если запрос разрешён.
-func (l *ViewMarketsLimiter) Allow(userID string) bool {
+// Allow возвращает ошибку, если лимит исчерпан.
+func (l *ViewMarketsLimiter) Allow(_ context.Context, userID string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -54,11 +57,11 @@ func (l *ViewMarketsLimiter) Allow(userID string) bool {
 
 	if len(active) >= l.maxAttempts {
 		l.attempts[userID] = active
-		return false
+		return fmt.Errorf("%w: too many requests", domain.ErrRateLimited)
 	}
 
 	l.attempts[userID] = append(active, now)
-	return true
+	return nil
 }
 
 var _ application.ViewMarketsRateLimiter = (*ViewMarketsLimiter)(nil)

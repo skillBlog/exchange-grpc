@@ -29,8 +29,9 @@ message CreateOrderRequest {
     pattern: "^[A-Z0-9]+-[A-Z0-9]+$"
   }];
   common.v1.OrderSide side = 2 [(buf.validate.field).enum = {defined_only: true, not_in: [0]}];
+  // Опционально для market-ордера. Если передано — вложенный Money проверяется (amount > 0).
   common.v1.Money price = 3;
-  common.v1.Decimal quantity = 4;
+  common.v1.Decimal quantity = 4 [(buf.validate.field).required = true];
   // Опционально: пустое значение пропускает правила (IGNORE_IF_ZERO_VALUE).
   string idempotency_key = 5 [
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,

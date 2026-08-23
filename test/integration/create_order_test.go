@@ -80,6 +80,53 @@ func TestCreateOrder_SucceedsForActiveMarket(t *testing.T) {
 	}
 }
 
+func TestCreateOrder_RejectsMissingQuantity(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
+	defer cancel()
+
+	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "BTC-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestCreateOrder_RejectsZeroQuantity(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
+	defer cancel()
+
+	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "BTC-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Quantity: &commonv1.Decimal{Value: "0"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestCreateOrder_RejectsZeroQuantityWithoutAuth(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "BTC-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Quantity: &commonv1.Decimal{Value: "0"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status = %v, want InvalidArgument (validate before jwt)", status.Code(err))
+	}
+}
+
 func TestCreateOrder_RequiresAuth(t *testing.T) {
 	suite := integration.NewSuite(t)
 

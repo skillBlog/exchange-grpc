@@ -68,3 +68,26 @@ func TestCreateOrder_RejectsForbiddenMarket(t *testing.T) {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
+
+func TestGetMarket_RejectsForbiddenMarket(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
+	defer cancel()
+
+	_, err := suite.SpotClient.GetMarket(ctx, &spotv1.GetMarketRequest{MarketId: "BNB-USDT"})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("status = %v, want PermissionDenied", status.Code(err))
+	}
+
+	ctxTrader, cancelTrader := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID, "trader"), 3*time.Second)
+	defer cancelTrader()
+
+	resp, err := suite.SpotClient.GetMarket(ctxTrader, &spotv1.GetMarketRequest{MarketId: "BNB-USDT"})
+	if err != nil {
+		t.Fatalf("GetMarket(trader) error = %v", err)
+	}
+	if resp.GetMarket().GetId() != "BNB-USDT" {
+		t.Fatalf("market id = %q", resp.GetMarket().GetId())
+	}
+}

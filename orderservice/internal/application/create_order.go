@@ -83,19 +83,31 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 
 	idempotencyKey := strings.TrimSpace(input.IdempotencyKey)
 	if idempotencyKey != "" && uc.idempotency != nil {
-		if orderID, found, getErr := uc.idempotency.GetOrderID(ctx, input.UserID, idempotencyKey); getErr != nil {
-			return CreateOrderOutput{}, getErr
+		var (
+			orderID string
+			found   bool
+		)
+		if err = runChildSpan(ctx, "order.CreateOrder.getIdempotency", func(ctx context.Context) error {
+			var getErr error
+			orderID, found, getErr = uc.idempotency.GetOrderID(ctx, input.UserID, idempotencyKey)
+			return getErr
+		}); err != nil {
+			return CreateOrderOutput{}, err
 		} else if found {
 			return uc.existingOrder(ctx, orderID, input.UserID)
 		}
 	}
 
-	if err = uc.markets.EnsureMarketAvailable(ctx, input.MarketID, input.UserRoles); err != nil {
+	if err = runChildSpan(ctx, "order.CreateOrder.ensureMarket", func(ctx context.Context) error {
+		return uc.markets.EnsureMarketAvailable(ctx, input.MarketID, input.UserRoles)
+	}); err != nil {
 		return CreateOrderOutput{}, err
 	}
 
 	if uc.limiter != nil {
-		if err = uc.limiter.Allow(ctx, input.UserID, input.UserRoles); err != nil {
+		if err = runChildSpan(ctx, "order.CreateOrder.rateLimit", func(ctx context.Context) error {
+			return uc.limiter.Allow(ctx, input.UserID, input.UserRoles)
+		}); err != nil {
 			return CreateOrderOutput{}, err
 		}
 	}
@@ -116,16 +128,25 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 	}
 
 	if idempotencyKey != "" && uc.idempotency != nil {
-		reserved, existingOrderID, reserveErr := uc.idempotency.Reserve(ctx, input.UserID, idempotencyKey, order.ID)
-		if reserveErr != nil {
-			return CreateOrderOutput{}, reserveErr
+		var (
+			reserved        bool
+			existingOrderID string
+		)
+		if err = runChildSpan(ctx, "order.CreateOrder.reserveIdempotency", func(ctx context.Context) error {
+			var reserveErr error
+			reserved, existingOrderID, reserveErr = uc.idempotency.Reserve(ctx, input.UserID, idempotencyKey, order.ID)
+			return reserveErr
+		}); err != nil {
+			return CreateOrderOutput{}, err
 		}
 		if !reserved {
 			return uc.existingOrder(ctx, existingOrderID, input.UserID)
 		}
 	}
 
-	if err = uc.orders.Create(ctx, order); err != nil {
+	if err = runChildSpan(ctx, "order.CreateOrder.insert", func(ctx context.Context) error {
+		return uc.orders.Create(ctx, order)
+	}); err != nil {
 		if idempotencyKey != "" && uc.idempotency != nil {
 			_ = uc.idempotency.Fail(ctx, input.UserID, idempotencyKey)
 		}
@@ -133,8 +154,16 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 	}
 
 	if idempotencyKey != "" && uc.idempotency != nil {
-		if completeErr := uc.idempotency.Complete(ctx, input.UserID, idempotencyKey); completeErr != nil {
-			return CreateOrderOutput{}, completeErr
+		completeErr := runChildSpan(ctx, "order.CreateOrder.completeIdempotency", func(ctx context.Context) error {
+			return uc.idempotency.Complete(ctx, input.UserID, idempotencyKey)
+		})
+		if completeErr != nil {
+			uc.log.Error("idempotency complete failed after order create",
+				zap.String("order_id", order.ID),
+				zap.String("user_id", order.UserID),
+				zap.String("idempotency_key", idempotencyKey),
+				zap.Error(completeErr),
+			)
 		}
 	}
 
@@ -168,4 +197,10 @@ func (uc *CreateOrder) existingOrder(ctx context.Context, orderID, userID string
 		zap.String("status", string(order.Status)),
 	)
 	return CreateOrderOutput{OrderID: order.ID, Status: order.Status}, nil
+}
+
+func runChildSpan(ctx context.Context, name string, fn func(context.Context) error) (err error) {
+	ctx, span := tracing.Start(ctx, name)
+	defer tracing.End(span, &err)
+	return fn(ctx)
 }

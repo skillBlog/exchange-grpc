@@ -63,11 +63,19 @@ func (l *CreateOrderLimiter) Allow(_ context.Context, userID string, userRoles [
 	tier := application.CreateOrderRateTierFromRoles(userRoles)
 	userCounter := l.users[userID]
 	if !allowCounter(&userCounter, now, l.cfg.LimitForTier(tier), l.cfg.UserWindow) {
-		l.users[userID] = userCounter
+		storeUserCounter(l.users, userID, userCounter)
 		return fmt.Errorf("%w: too many create order requests", domain.ErrRateLimited)
 	}
-	l.users[userID] = userCounter
+	storeUserCounter(l.users, userID, userCounter)
 	return nil
+}
+
+func storeUserCounter(users map[string]counter, userID string, userCounter counter) {
+	if len(userCounter.timestamps) == 0 {
+		delete(users, userID)
+		return
+	}
+	users[userID] = userCounter
 }
 
 func allowCounter(counter *counter, now time.Time, limit int, window time.Duration) bool {

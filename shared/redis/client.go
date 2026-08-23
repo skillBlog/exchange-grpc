@@ -3,8 +3,14 @@ package redis
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
+)
+
+const (
+	defaultConnMaxIdleTime = 5 * time.Minute
+	defaultConnMaxLifetime = 30 * time.Minute
 )
 
 // Client оборачивает go-redis клиент.
@@ -42,6 +48,29 @@ func WithMaxRetries(n int) Option {
 	}
 }
 
+// WithConnMaxIdleTime задаёт максимальное время простоя соединения в пуле.
+func WithConnMaxIdleTime(d time.Duration) Option {
+	return func(o *redis.Options) {
+		o.ConnMaxIdleTime = d
+	}
+}
+
+// WithConnMaxLifetime задаёт максимальное время жизни соединения.
+func WithConnMaxLifetime(d time.Duration) Option {
+	return func(o *redis.Options) {
+		o.ConnMaxLifetime = d
+	}
+}
+
+func applyConnLifetimeDefaults(o *redis.Options) {
+	if o.ConnMaxIdleTime == 0 {
+		o.ConnMaxIdleTime = defaultConnMaxIdleTime
+	}
+	if o.ConnMaxLifetime == 0 {
+		o.ConnMaxLifetime = defaultConnMaxLifetime
+	}
+}
+
 // Connect открывает соединение с Redis.
 func Connect(ctx context.Context, url string, opts ...Option) (*Client, error) {
 	parsed, err := redis.ParseURL(url)
@@ -54,6 +83,7 @@ func Connect(ctx context.Context, url string, opts ...Option) (*Client, error) {
 			opt(parsed)
 		}
 	}
+	applyConnLifetimeDefaults(parsed)
 
 	rdb := redis.NewClient(parsed)
 	if err := rdb.Ping(ctx).Err(); err != nil {

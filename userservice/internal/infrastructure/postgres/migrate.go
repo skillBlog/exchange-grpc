@@ -5,19 +5,20 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
 
-// RunMigrations применяет SQL-миграции goose.
-func RunMigrations(ctx context.Context, databaseURL, migrationsDir string) error {
-	db, err := sql.Open("pgx", databaseURL)
-	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+// RunMigrations применяет SQL-миграции goose через уже открытый pgxpool.
+func RunMigrations(ctx context.Context, db *DB, migrationsDir string) error {
+	if db == nil || db.Pool == nil {
+		return fmt.Errorf("database is not configured")
 	}
-	defer db.Close()
 
-	if err := db.PingContext(ctx); err != nil {
+	sqlDB := stdlib.OpenDBFromPool(db.Pool)
+	defer sqlDB.Close()
+
+	if err := sqlDB.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping database: %w", err)
 	}
 
@@ -25,7 +26,7 @@ func RunMigrations(ctx context.Context, databaseURL, migrationsDir string) error
 		return fmt.Errorf("set goose dialect: %w", err)
 	}
 
-	if err := goose.UpContext(ctx, db, migrationsDir); err != nil {
+	if err := goose.UpContext(ctx, sqlDB, migrationsDir); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	return nil
@@ -33,10 +34,10 @@ func RunMigrations(ctx context.Context, databaseURL, migrationsDir string) error
 
 // Ping проверяет доступность PostgreSQL.
 func Ping(ctx context.Context, databaseURL string) error {
-	db, err := sql.Open("pgx", databaseURL)
+	sqlDB, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
-	return db.PingContext(ctx)
+	defer sqlDB.Close()
+	return sqlDB.PingContext(ctx)
 }

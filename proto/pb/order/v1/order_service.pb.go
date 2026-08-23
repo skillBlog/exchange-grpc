@@ -30,8 +30,9 @@ type CreateOrderRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	MarketId string                 `protobuf:"bytes,1,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"`
 	Side     v1.OrderSide           `protobuf:"varint,2,opt,name=side,proto3,enum=common.v1.OrderSide" json:"side,omitempty"`
-	Price    *v1.Money              `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
-	Quantity *v1.Decimal            `protobuf:"bytes,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	// Опционально для market-ордера. Если передано — вложенный Money проверяется (amount > 0).
+	Price    *v1.Money   `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity *v1.Decimal `protobuf:"bytes,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	// Опционально: пустое значение пропускает правила (IGNORE_IF_ZERO_VALUE).
 	IdempotencyKey string `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -612,13 +613,13 @@ var File_order_v1_order_service_proto protoreflect.FileDescriptor
 
 const file_order_v1_order_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1corder/v1/order_service.proto\x12\border.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17common/v1/decimal.proto\x1a\x15common/v1/money.proto\x1a\x1acommon/v1/order_side.proto\x1a\x1ccommon/v1/order_status.proto\x1a\x1acommon/v1/pagination.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x99\x02\n" +
+	"\x1corder/v1/order_service.proto\x12\border.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17common/v1/decimal.proto\x1a\x15common/v1/money.proto\x1a\x1acommon/v1/order_side.proto\x1a\x1ccommon/v1/order_status.proto\x1a\x1acommon/v1/pagination.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa1\x02\n" +
 	"\x12CreateOrderRequest\x12=\n" +
 	"\tmarket_id\x18\x01 \x01(\tB \xbaH\x1dr\x1b\x10\x01\x18@2\x15^[A-Z0-9]+-[A-Z0-9]+$R\bmarketId\x124\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x14.common.v1.OrderSideB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\x04side\x12&\n" +
-	"\x05price\x18\x03 \x01(\v2\x10.common.v1.MoneyR\x05price\x12.\n" +
-	"\bquantity\x18\x04 \x01(\v2\x12.common.v1.DecimalR\bquantity\x126\n" +
+	"\x05price\x18\x03 \x01(\v2\x10.common.v1.MoneyR\x05price\x126\n" +
+	"\bquantity\x18\x04 \x01(\v2\x12.common.v1.DecimalB\x06\xbaH\x03\xc8\x01\x01R\bquantity\x126\n" +
 	"\x0fidempotency_key\x18\x05 \x01(\tB\r\xbaH\n" +
 	"\xd8\x01\x01r\x05\x10\x01\x18\x80\x01R\x0eidempotencyKey\"j\n" +
 	"\x13CreateOrderResponse\x12#\n" +

@@ -24,6 +24,7 @@ const (
 
 // Market — спотовый торговый рынок.
 // Активность определяется полем enabled (active / inactive).
+// id — торговый символ (BTC-USDT), не UUID; тот же контракт, что у GetMarketRequest.market_id.
 type Market struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -112,13 +113,14 @@ var File_common_v1_market_proto protoreflect.FileDescriptor
 
 const file_common_v1_market_proto_rawDesc = "" +
 	"\n" +
-	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\x1a\x14common/v1/role.proto\"\xdf\x01\n" +
-	"\x06Market\x12\x17\n" +
-	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12\x1b\n" +
-	"\x04name\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12\x1d\n" +
+	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\x1a\x14common/v1/role.proto\"\xab\x02\n" +
+	"\x06Market\x120\n" +
+	"\x02id\x18\x01 \x01(\tB \xbaH\x1dr\x1b\x10\x01\x18@2\x15^[A-Z0-9]+-[A-Z0-9]+$R\x02id\x12\x1e\n" +
+	"\x04name\x18\x02 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x01R\x04name\x125\n" +
 	"\n" +
-	"base_asset\x18\x03 \x01(\tR\tbaseAsset\x12\x1f\n" +
-	"\vquote_asset\x18\x04 \x01(\tR\n" +
+	"base_asset\x18\x03 \x01(\tB\x16\xbaH\x13r\x11\x10\x01\x18\x102\v^[A-Z0-9]+$R\tbaseAsset\x127\n" +
+	"\vquote_asset\x18\x04 \x01(\tB\x16\xbaH\x13r\x11\x10\x01\x18\x102\v^[A-Z0-9]+$R\n" +
 	"quoteAsset\x12\x18\n" +
 	"\aenabled\x18\x05 \x01(\bR\aenabled\x12E\n" +
 	"\rallowed_roles\x18\x06 \x03(\x0e2\x0f.common.v1.RoleB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\fallowedRolesB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"

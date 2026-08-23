@@ -12,15 +12,17 @@ import (
 
 	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
 	sharedapprunner "github.com/exchange-grpc/shared/apprunner"
-	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/grpc"
+	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/logger"
+	sharedredis "github.com/exchange-grpc/shared/redis"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/shared/tracing"
-	grpcserver "github.com/exchange-grpc/spotservice/internal/interfaces/grpcserver"
+	"github.com/exchange-grpc/spotservice/internal/application"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/cache"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/postgres"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/ratelimit"
+	grpcserver "github.com/exchange-grpc/spotservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/spotservice/pkg/config"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
@@ -69,15 +71,15 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
-	if err := postgres.RunMigrations(runCtx, r.cfg.DatabaseURL, migrationsDir); err != nil {
-		return fmt.Errorf("run migrations: %w", err)
-	}
-
 	db, err := postgres.Connect(runCtx, r.cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}
 	defer db.Close()
+
+	if err := postgres.RunMigrations(runCtx, db, migrationsDir); err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
 
 	tokens, err := sessionvalidation.NewTokenService(r.cfg.JWTSecret, r.cfg.AccessTokenTTL)
 	if err != nil {
@@ -89,19 +91,34 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	}
 
 	marketRepo := cache.NewMarketRepository(postgres.NewMarketRepository(db), r.cfg.MarketCacheTTL)
-	viewMarketsLimiter := ratelimit.NewViewMarketsLimiter(r.cfg.ViewMarketsRateLimit, r.cfg.ViewMarketsRateWindow)
-	server := grpcserver.NewServerFromRepository(marketRepo, viewMarketsLimiter)
+
+	var viewMarketsLimiter application.ViewMarketsRateLimiter
+	var redisClient *sharedredis.Client
+	redisClient, err = sharedredis.Connect(
+		runCtx,
+		r.cfg.RedisURL,
+		sharedredis.WithPoolSize(r.cfg.RedisPoolSize),
+		sharedredis.WithMaxRetries(r.cfg.RedisMaxRetries),
+	)
+	if err != nil {
+		log.Warn("redis unavailable, using in-memory view markets rate limiter", zap.Error(err))
+		viewMarketsLimiter = ratelimit.NewViewMarketsLimiter(r.cfg.ViewMarketsRateLimit, r.cfg.ViewMarketsRateWindow)
+	} else {
+		defer redisClient.Close()
+		viewMarketsLimiter = ratelimit.NewRedisViewMarketsLimiter(redisClient.Raw(), r.cfg.ViewMarketsRateLimit, r.cfg.ViewMarketsRateWindow)
+		log.Info("view markets rate limiter uses redis", zap.String("redis_url", r.cfg.RedisURL))
+	}
+
+	server := grpcserver.NewServerFromRepository(marketRepo, viewMarketsLimiter, log)
 
 	grpcServer := googlegrpc.NewServer(
 		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
-		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
-			grpc.UnaryServerRequestID,
-			grpc.NewUnaryServerJWTAuth(tokens,
-				grpc_health_v1.Health_Check_FullMethodName,
-				grpc_health_v1.Health_Watch_FullMethodName,
-			),
-			grpc.NewUnaryServerProtoValidate(validator),
-			grpc.UnaryServerLogging(log),
+		googlegrpc.UnaryInterceptor(grpc.UnaryServerInterceptors(
+			log,
+			validator,
+			tokens,
+			grpc_health_v1.Health_Check_FullMethodName,
+			grpc_health_v1.Health_Watch_FullMethodName,
 		)),
 	)
 	spotv1.RegisterSpotServiceServer(grpcServer, server)
@@ -121,7 +138,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		10*time.Second,
 		r.cfg.HealthCheckTimeout,
 		log,
-		[]sharedhealth.Checker{db.Ping, marketRepo.Ping},
+		[]sharedhealth.Checker{db.Ping},
 	)
 	go healthWatcher.Run(runCtx)
 

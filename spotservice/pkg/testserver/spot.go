@@ -7,10 +7,10 @@ import (
 	"time"
 
 	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
-	grpcserver "github.com/exchange-grpc/spotservice/internal/interfaces/grpcserver"
-	"github.com/exchange-grpc/spotservice/internal/infrastructure/memory"
 	"github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/shared/sessionvalidation"
+	"github.com/exchange-grpc/spotservice/internal/infrastructure/memory"
+	grpcserver "github.com/exchange-grpc/spotservice/internal/interfaces/grpcserver"
 	googlegrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -29,14 +29,16 @@ type Spot struct {
 func NewSpot(t *testing.T, tokens *sessionvalidation.TokenService) *Spot {
 	t.Helper()
 
-	unary := grpc.ChainUnaryServer(
-		grpc.UnaryServerRequestID,
-		grpc.NewUnaryServerJWTAuth(tokens),
-	)
+	validator, err := grpc.NewProtoValidator()
+	if err != nil {
+		t.Fatalf("NewProtoValidator() error = %v", err)
+	}
+
+	unary := grpc.UnaryServerInterceptors(nil, validator, tokens)
 
 	listener := bufconn.Listen(bufSize)
 	repo := memory.NewSeededMarketRepository()
-	server := grpcserver.NewServerFromRepository(repo, nil)
+	server := grpcserver.NewServerFromRepository(repo, nil, nil)
 	grpcServer := googlegrpc.NewServer(googlegrpc.UnaryInterceptor(unary))
 	spotv1.RegisterSpotServiceServer(grpcServer, server)
 

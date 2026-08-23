@@ -23,6 +23,7 @@ const (
 )
 
 // Decimal — десятичное значение (количество актива).
+// Строго больше нуля: "0", "0.0", "0.00" отклоняются.
 type Decimal struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
@@ -71,9 +72,9 @@ var File_common_v1_decimal_proto protoreflect.FileDescriptor
 
 const file_common_v1_decimal_proto_rawDesc = "" +
 	"\n" +
-	"\x17common/v1/decimal.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"D\n" +
-	"\aDecimal\x129\n" +
-	"\x05value\x18\x01 \x01(\tB#\xbaH r\x1e\x10\x012\x1a^(?:0|[1-9]\\d*)(?:\\.\\d+)?$R\x05valueB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
+	"\x17common/v1/decimal.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\"T\n" +
+	"\aDecimal\x12I\n" +
+	"\x05value\x18\x01 \x01(\tB3\xbaH0r.\x10\x012*^(?:0\\.(?:0*[1-9]\\d*)|[1-9]\\d*(?:\\.\\d+)?)$R\x05valueB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_decimal_proto_rawDescOnce sync.Once

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	"github.com/exchange-grpc/shared/tracing"
 )
 
 // UpdateOrderStatusInput — запрос на смену статуса ордера.
@@ -33,7 +34,12 @@ func NewUpdateOrderStatus(orders domain.OrderRepository, notifier OrderNotifier)
 }
 
 // Execute обновляет статус ордера, если он принадлежит пользователю.
-func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatusInput) error {
+func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatusInput) (err error) {
+	ctx, span := tracing.Start(ctx, "order.UpdateOrderStatus",
+		tracing.Attr("order.id", strings.TrimSpace(input.OrderID)),
+	)
+	defer tracing.End(span, &err)
+
 	orderID, err := domain.ParseUUID(input.OrderID, "order_id")
 	if err != nil {
 		return err

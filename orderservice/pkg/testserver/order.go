@@ -52,10 +52,12 @@ type Order struct {
 func NewOrder(t *testing.T, spotConn *googlegrpc.ClientConn, tokens *sessionvalidation.TokenService) *Order {
 	t.Helper()
 
-	unary := grpc.ChainUnaryServer(
-		grpc.UnaryServerRequestID,
-		grpc.NewUnaryServerJWTAuth(tokens),
-	)
+	validator, err := grpc.NewProtoValidator()
+	if err != nil {
+		t.Fatalf("NewProtoValidator() error = %v", err)
+	}
+
+	unary := grpc.UnaryServerInterceptors(nil, validator, tokens)
 
 	marketClient := spotclient.New(spotConn, 0)
 	orderRepo := memory.NewOrderRepository()
@@ -74,10 +76,7 @@ func NewOrder(t *testing.T, spotConn *googlegrpc.ClientConn, tokens *sessionvali
 	listener := bufconn.Listen(bufSize)
 	grpcServer := googlegrpc.NewServer(
 		googlegrpc.UnaryInterceptor(unary),
-		googlegrpc.StreamInterceptor(grpc.ChainStreamServer(
-			grpc.StreamServerRequestID,
-			grpc.NewStreamServerJWTAuth(tokens),
-		)),
+		googlegrpc.StreamInterceptor(grpc.StreamServerInterceptors(nil, validator, tokens)),
 	)
 	orderv1.RegisterOrderServiceServer(grpcServer, orderServer)
 

@@ -9,11 +9,24 @@ import "common/v1/role.proto";
 
 // Market — спотовый торговый рынок.
 // Активность определяется полем enabled (active / inactive).
+// id — торговый символ (BTC-USDT), не UUID; тот же контракт, что у GetMarketRequest.market_id.
 message Market {
-  string id = 1 [(buf.validate.field).string.min_len = 1];
-  string name = 2 [(buf.validate.field).string.min_len = 1];
-  string base_asset = 3;
-  string quote_asset = 4;
+  string id = 1 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 64,
+    pattern: "^[A-Z0-9]+-[A-Z0-9]+$"
+  }];
+  string name = 2 [(buf.validate.field).string = {min_len: 1, max_len: 128}];
+  string base_asset = 3 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 16,
+    pattern: "^[A-Z0-9]+$"
+  }];
+  string quote_asset = 4 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 16,
+    pattern: "^[A-Z0-9]+$"
+  }];
   bool enabled = 5;
   repeated Role allowed_roles = 6 [(buf.validate.field).repeated.items.enum = {defined_only: true, not_in: [0]}];
 }

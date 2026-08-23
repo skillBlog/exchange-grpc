@@ -6,6 +6,7 @@ import (
 	userv1 "github.com/exchange-grpc/proto/pb/user/v1"
 	"github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/userservice/internal/application"
+	"google.golang.org/grpc/peer"
 )
 
 // Server реализует user.v1.UserService.
@@ -47,7 +48,11 @@ func (s *Server) Register(ctx context.Context, req *userv1.RegisterRequest) (*us
 
 // Login аутентифицирует пользователя и возвращает JWT.
 func (s *Server) Login(ctx context.Context, req *userv1.LoginRequest) (*userv1.LoginResponse, error) {
-	out, err := s.login.Execute(ctx, s.mapper.LoginRequestToInput(req))
+	in := s.mapper.LoginRequestToInput(req)
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		in.ClientAddr = p.Addr.String()
+	}
+	out, err := s.login.Execute(ctx, in)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

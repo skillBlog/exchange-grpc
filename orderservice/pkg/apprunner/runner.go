@@ -10,16 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/postgres"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/ratelimit"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/spotclient"
 	grpcserver "github.com/exchange-grpc/orderservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/orderservice/pkg/config"
+	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	sharedapprunner "github.com/exchange-grpc/shared/apprunner"
-	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/grpc"
+	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/logger"
 	sharedredis "github.com/exchange-grpc/shared/redis"
 	"github.com/exchange-grpc/shared/sessionvalidation"
@@ -71,15 +71,15 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
-	if err := postgres.RunMigrations(runCtx, r.cfg.DatabaseURL, migrationsDir); err != nil {
-		return fmt.Errorf("run migrations: %w", err)
-	}
-
 	db, err := postgres.Connect(runCtx, r.cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}
 	defer db.Close()
+
+	if err := postgres.RunMigrations(runCtx, db, migrationsDir); err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
 
 	tokens, err := sessionvalidation.NewTokenService(r.cfg.JWTSecret, r.cfg.AccessTokenTTL)
 	if err != nil {
@@ -131,20 +131,19 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	grpcServer := googlegrpc.NewServer(
 		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
-		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
-			grpc.UnaryServerRequestID,
-			grpc.NewUnaryServerJWTAuth(tokens,
-				grpc_health_v1.Health_Check_FullMethodName,
-				grpc_health_v1.Health_Watch_FullMethodName,
-			),
-			grpc.NewUnaryServerProtoValidate(validator),
-			grpc.UnaryServerLogging(log),
+		googlegrpc.UnaryInterceptor(grpc.UnaryServerInterceptors(
+			log,
+			validator,
+			tokens,
+			grpc_health_v1.Health_Check_FullMethodName,
+			grpc_health_v1.Health_Watch_FullMethodName,
 		)),
-		googlegrpc.ChainStreamInterceptor(
-			grpc.StreamServerRequestID,
-			grpc.NewStreamServerJWTAuth(tokens),
-			grpc.StreamServerLogging(log),
-		),
+		googlegrpc.StreamInterceptor(grpc.StreamServerInterceptors(
+			log,
+			validator,
+			tokens,
+			grpc_health_v1.Health_Watch_FullMethodName,
+		)),
 	)
 	orderv1.RegisterOrderServiceServer(grpcServer, server)
 

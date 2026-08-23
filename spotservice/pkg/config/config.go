@@ -16,6 +16,9 @@ const (
 	defaultViewMarketsRateLimit  = 30
 	defaultViewMarketsRateWindow = time.Minute
 	defaultHealthCheckTimeout    = 3 * time.Second
+	defaultRedisURL              = "redis://localhost:6379/0"
+	defaultRedisPoolSize         = 10
+	defaultRedisMaxRetries       = 3
 )
 
 // Config содержит runtime-конфигурацию spotservice.
@@ -30,6 +33,9 @@ type Config struct {
 	ViewMarketsRateWindow time.Duration
 	HealthCheckTimeout    time.Duration
 	LogLevelAddr          string
+	RedisURL              string
+	RedisPoolSize         int
+	RedisMaxRetries       int
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
@@ -45,6 +51,9 @@ func LoadConfig() Config {
 		ViewMarketsRateWindow: envDurationOrDefault("VIEW_MARKETS_RATE_WINDOW", defaultViewMarketsRateWindow),
 		HealthCheckTimeout:    envDurationOrDefault("HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 		LogLevelAddr:          os.Getenv("LOG_LEVEL_ADDR"),
+		RedisURL:              envOrDefault("REDIS_URL", defaultRedisURL),
+		RedisPoolSize:         envIntOrDefault("REDIS_POOL_SIZE", defaultRedisPoolSize),
+		RedisMaxRetries:       envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
 	}
 }
 

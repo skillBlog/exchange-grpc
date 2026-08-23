@@ -55,6 +55,7 @@ func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (o
 		return RefreshTokenOutput{}, err
 	}
 
+	// Актуальные роли только из БД: opaque refresh хранит user_id, не claims.
 	user, err := uc.users.GetByID(ctx, userID)
 	if err != nil {
 		return RefreshTokenOutput{}, domain.ErrUnauthorized
@@ -65,14 +66,9 @@ func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (o
 		return RefreshTokenOutput{}, fmt.Errorf("issue access token: %w", err)
 	}
 
-	newRefresh, err := uc.refreshTokens.Issue(ctx, user.ID)
+	newRefresh, err := uc.refreshTokens.Rotate(ctx, oldRefresh, user.ID)
 	if err != nil {
-		return RefreshTokenOutput{}, fmt.Errorf("issue refresh token: %w", err)
-	}
-
-	// Сначала выдаём новый, потом отзываем старый — клиент не останется без валидного refresh.
-	if err = uc.refreshTokens.Revoke(ctx, oldRefresh); err != nil {
-		return RefreshTokenOutput{}, fmt.Errorf("revoke old refresh token: %w", err)
+		return RefreshTokenOutput{}, fmt.Errorf("rotate refresh token: %w", err)
 	}
 
 	return RefreshTokenOutput{

@@ -65,3 +65,57 @@ func (r *RefreshTokenRepository) Revoke(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// Rotate атомарно отзывает старый refresh token и сохраняет новый.
+func (r *RefreshTokenRepository) Rotate(ctx context.Context, oldTokenHash string, now time.Time, newToken domain.RefreshToken) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin rotate refresh token: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	row := tx.QueryRow(ctx, `
+		SELECT id, user_id, token_hash, expires_at, revoked_at
+		FROM refresh_tokens
+		WHERE token_hash = $1
+		FOR UPDATE
+	`, oldTokenHash)
+
+	var stored domain.RefreshToken
+	var revokedAt *time.Time
+	if err := row.Scan(&stored.ID, &stored.UserID, &stored.TokenHash, &stored.ExpiresAt, &revokedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrUnauthorized
+		}
+		return err
+	}
+	stored.RevokedAt = revokedAt
+	if !stored.IsActive(now) || stored.UserID != newToken.UserID {
+		return domain.ErrUnauthorized
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = $1
+		WHERE id = $2 AND revoked_at IS NULL
+	`, now, stored.ID)
+	if err != nil {
+		return fmt.Errorf("revoke refresh token: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUnauthorized
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, newToken.ID, newToken.UserID, newToken.TokenHash, newToken.ExpiresAt, newToken.RevokedAt)
+	if err != nil {
+		return fmt.Errorf("insert rotated refresh token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit rotate refresh token: %w", err)
+	}
+	return nil
+}

@@ -26,7 +26,10 @@ func NewServer(viewMarkets *application.ViewMarkets, getMarket *application.GetM
 
 // ViewMarkets возвращает активные спотовые рынки, доступные вызывающей стороне.
 func (s *Server) ViewMarkets(ctx context.Context, req *spotv1.ViewMarketsRequest) (*spotv1.ViewMarketsResponse, error) {
-	userID, _ := grpc.UserIDFromContext(ctx)
+	userID, ok := grpc.UserIDFromContext(ctx)
+	if !ok {
+		return nil, grpc.ErrMissingUserID()
+	}
 	out, err := s.viewMarkets.Execute(ctx, s.mapper.ViewMarketsRequestToInput(req, userID, grpc.RolesFromContext(ctx)))
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -36,7 +39,15 @@ func (s *Server) ViewMarkets(ctx context.Context, req *spotv1.ViewMarketsRequest
 
 // GetMarket возвращает рынок по идентификатору.
 func (s *Server) GetMarket(ctx context.Context, req *spotv1.GetMarketRequest) (*spotv1.GetMarketResponse, error) {
-	market, err := s.getMarket.Execute(ctx, req.GetMarketId())
+	userID, ok := grpc.UserIDFromContext(ctx)
+	if !ok {
+		return nil, grpc.ErrMissingUserID()
+	}
+	market, err := s.getMarket.Execute(ctx, application.GetMarketInput{
+		MarketID:  req.GetMarketId(),
+		UserID:    userID,
+		UserRoles: grpc.RolesFromContext(ctx),
+	})
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

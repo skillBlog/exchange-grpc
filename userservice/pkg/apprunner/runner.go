@@ -12,18 +12,18 @@ import (
 
 	userv1 "github.com/exchange-grpc/proto/pb/user/v1"
 	sharedapprunner "github.com/exchange-grpc/shared/apprunner"
-	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/grpc"
+	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/logger"
 	sharedredis "github.com/exchange-grpc/shared/redis"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/application"
-	grpcserver "github.com/exchange-grpc/userservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/postgres"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/ratelimit"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/tokens"
+	grpcserver "github.com/exchange-grpc/userservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/userservice/pkg/config"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
@@ -72,15 +72,15 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
 
-	if err := postgres.RunMigrations(runCtx, r.cfg.DatabaseURL, migrationsDir); err != nil {
-		return fmt.Errorf("run migrations: %w", err)
-	}
-
 	db, err := postgres.Connect(runCtx, r.cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}
 	defer db.Close()
+
+	if err := postgres.RunMigrations(runCtx, db, migrationsDir); err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
 
 	accessTokens, err := sessionvalidation.NewTokenService(r.cfg.JWTSecret, r.cfg.AccessTokenTTL)
 	if err != nil {
@@ -114,7 +114,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	}
 
 	registerUC := application.NewRegister(userRepo, hasher, accessTokens, refreshTokens)
-	loginUC := application.NewLogin(userRepo, hasher, accessTokens, refreshTokens, loginLimiter)
+	loginUC := application.NewLogin(userRepo, hasher, accessTokens, refreshTokens, loginLimiter, log)
 	refreshUC := application.NewRefreshToken(userRepo, accessTokens, refreshTokens)
 	getUserUC := application.NewGetUser(userRepo)
 	logoutUC := application.NewLogout(refreshTokens)
@@ -122,18 +122,16 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	grpcServer := googlegrpc.NewServer(
 		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
-		googlegrpc.UnaryInterceptor(grpc.ChainUnaryServer(
-			grpc.UnaryServerRequestID,
-			grpc.NewUnaryServerJWTAuth(accessTokens,
-				userv1.UserService_Register_FullMethodName,
-				userv1.UserService_Login_FullMethodName,
-				userv1.UserService_RefreshToken_FullMethodName,
-				userv1.UserService_Logout_FullMethodName,
-				grpc_health_v1.Health_Check_FullMethodName,
-				grpc_health_v1.Health_Watch_FullMethodName,
-			),
-			grpc.NewUnaryServerProtoValidate(validator),
-			grpc.UnaryServerLogging(log),
+		googlegrpc.UnaryInterceptor(grpc.UnaryServerInterceptors(
+			log,
+			validator,
+			accessTokens,
+			userv1.UserService_Register_FullMethodName,
+			userv1.UserService_Login_FullMethodName,
+			userv1.UserService_RefreshToken_FullMethodName,
+			userv1.UserService_Logout_FullMethodName,
+			grpc_health_v1.Health_Check_FullMethodName,
+			grpc_health_v1.Health_Watch_FullMethodName,
 		)),
 	)
 	userv1.RegisterUserServiceServer(grpcServer, server)

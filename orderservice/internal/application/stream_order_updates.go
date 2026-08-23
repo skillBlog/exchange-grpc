@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -54,8 +55,7 @@ func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpda
 	}
 
 	if uc.hub == nil {
-		<-ctx.Done()
-		return ctx.Err()
+		return fmt.Errorf("order update hub is not configured")
 	}
 
 	updates, unsubscribe := uc.hub.Subscribe(order.ID)

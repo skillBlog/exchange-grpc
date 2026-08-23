@@ -7,9 +7,10 @@ option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
 import "buf/validate/validate.proto";
 
 // Decimal — десятичное значение (количество актива).
+// Строго больше нуля: "0", "0.0", "0.00" отклоняются.
 message Decimal {
   string value = 1 [(buf.validate.field).string = {
     min_len: 1,
-    pattern: "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+    pattern: "^(?:0\\.(?:0*[1-9]\\d*)|[1-9]\\d*(?:\\.\\d+)?)$"
   }];
 }

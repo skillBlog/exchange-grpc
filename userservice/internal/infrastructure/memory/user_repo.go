@@ -151,3 +151,29 @@ func (r *RefreshTokenRepository) Revoke(ctx context.Context, id string) error {
 	r.byID[id] = token
 	return nil
 }
+
+// Rotate атомарно отзывает старый refresh token и сохраняет новый.
+func (r *RefreshTokenRepository) Rotate(ctx context.Context, oldTokenHash string, now time.Time, newToken domain.RefreshToken) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	id, ok := r.byHash[oldTokenHash]
+	if !ok {
+		return domain.ErrUnauthorized
+	}
+	old, ok := r.byID[id]
+	if !ok || !old.IsActive(now) || old.UserID != newToken.UserID {
+		return domain.ErrUnauthorized
+	}
+
+	revokedAt := now
+	old.RevokedAt = &revokedAt
+	r.byID[id] = old
+	r.byID[newToken.ID] = newToken
+	r.byHash[newToken.TokenHash] = newToken.ID
+	return nil
+}

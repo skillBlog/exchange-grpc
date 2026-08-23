@@ -8,6 +8,9 @@ import (
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/memory"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type marketCheckerStub struct {
@@ -168,6 +171,79 @@ func TestCreateOrder_forbiddenMarket(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+}
+
+type completeFailStore struct {
+	inner domain.IdempotencyStore
+}
+
+func (s completeFailStore) GetOrderID(ctx context.Context, userID, key string) (string, bool, error) {
+	return s.inner.GetOrderID(ctx, userID, key)
+}
+
+func (s completeFailStore) Reserve(ctx context.Context, userID, key, orderID string) (bool, string, error) {
+	return s.inner.Reserve(ctx, userID, key, orderID)
+}
+
+func (s completeFailStore) Complete(context.Context, string, string) error {
+	return errors.New("complete failed")
+}
+
+func (s completeFailStore) Fail(ctx context.Context, userID, key string) error {
+	return s.inner.Fail(ctx, userID, key)
+}
+
+func TestCreateOrder_completeFailureDoesNotFailClient(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	core, logs := observer.New(zapcore.ErrorLevel)
+	uc := application.NewCreateOrder(
+		repo,
+		marketCheckerStub{},
+		completeFailStore{inner: memory.NewIdempotencyStore()},
+		nil,
+		nil,
+		zap.New(core),
+	)
+
+	out, err := uc.Execute(context.Background(), application.CreateOrderInput{
+		UserID:         "11111111-1111-1111-1111-111111111111",
+		MarketID:       "BTC-USDT",
+		Side:           domain.OrderSideBuy,
+		Quantity:       mustDecimal(t, "0.1"),
+		IdempotencyKey: "key-complete-fail",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v, want success after complete failure", err)
+	}
+	if out.OrderID == "" {
+		t.Fatal("expected order id")
+	}
+
+	saved, err := repo.GetByID(context.Background(), out.OrderID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if saved.ID != out.OrderID {
+		t.Fatalf("saved id = %q, want %q", saved.ID, out.OrderID)
+	}
+
+	entries := logs.FilterMessage("idempotency complete failed after order create").All()
+	if len(entries) != 1 {
+		t.Fatalf("complete failure logs = %d, want 1", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if got, _ := fields["order_id"].(string); got != out.OrderID {
+		t.Fatalf("order_id = %q, want %q", got, out.OrderID)
+	}
+	if got, _ := fields["user_id"].(string); got != "11111111-1111-1111-1111-111111111111" {
+		t.Fatalf("user_id = %q", got)
+	}
+	if got, _ := fields["idempotency_key"].(string); got != "key-complete-fail" {
+		t.Fatalf("idempotency_key = %q", got)
+	}
+	if _, ok := fields["error"]; !ok {
+		t.Fatal("expected error field in complete failure log")
 	}
 }
 

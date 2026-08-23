@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/exchange-grpc/userservice/internal/domain"
@@ -80,6 +81,35 @@ func (s *RefreshTokenService) Revoke(ctx context.Context, raw string) error {
 		return err
 	}
 	return s.repo.Revoke(ctx, stored.ID)
+}
+
+// Rotate атомарно отзывает старый refresh token и выдаёт новый.
+func (s *RefreshTokenService) Rotate(ctx context.Context, oldRaw, userID string) (string, error) {
+	oldRaw = strings.TrimSpace(oldRaw)
+	userID = strings.TrimSpace(userID)
+	if oldRaw == "" {
+		return "", fmt.Errorf("%w: refresh token is required", domain.ErrUnauthorized)
+	}
+	if userID == "" {
+		return "", fmt.Errorf("%w: user_id is required", domain.ErrInvalidArgument)
+	}
+
+	raw, err := randomToken()
+	if err != nil {
+		return "", fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	now := s.now()
+	token := domain.RefreshToken{
+		ID:        uuid.NewString(),
+		UserID:    userID,
+		TokenHash: hashToken(raw),
+		ExpiresAt: now.Add(s.ttl),
+	}
+	if err := s.repo.Rotate(ctx, hashToken(oldRaw), now, token); err != nil {
+		return "", err
+	}
+	return raw, nil
 }
 
 func randomToken() (string, error) {

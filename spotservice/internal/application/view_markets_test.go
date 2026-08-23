@@ -12,7 +12,7 @@ import (
 
 func TestViewMarkets_returnsOnlyActiveMarkets(t *testing.T) {
 	repo := memory.NewSeededMarketRepository()
-	uc := application.NewViewMarkets(repo, nil)
+	uc := application.NewViewMarkets(repo, nil, nil)
 
 	out, err := uc.Execute(context.Background(), application.ViewMarketsInput{
 		UserRoles: []string{"trader"},
@@ -38,7 +38,7 @@ func TestViewMarkets_returnsOnlyActiveMarkets(t *testing.T) {
 
 func TestViewMarkets_filtersByUserRoles(t *testing.T) {
 	repo := memory.NewSeededMarketRepository()
-	uc := application.NewViewMarkets(repo, nil)
+	uc := application.NewViewMarkets(repo, nil, nil)
 
 	withTrader, err := uc.Execute(context.Background(), application.ViewMarketsInput{
 		UserRoles: []string{"trader"},
@@ -71,7 +71,7 @@ func TestViewMarkets_filtersByUserRoles(t *testing.T) {
 
 func TestViewMarkets_cursorPagination(t *testing.T) {
 	repo := memory.NewSeededMarketRepository()
-	uc := application.NewViewMarkets(repo, nil)
+	uc := application.NewViewMarkets(repo, nil, nil)
 
 	first, err := uc.Execute(context.Background(), application.ViewMarketsInput{
 		UserRoles: []string{"trader"},

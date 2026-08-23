@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/sessionvalidation"
@@ -39,15 +40,46 @@ func NewUnaryServerJWTAuth(tokens *sessionvalidation.TokenService, publicMethods
 	}
 }
 
-// NewStreamServerJWTAuth проверяет JWT для server-streaming RPC.
-func NewStreamServerJWTAuth(tokens *sessionvalidation.TokenService) grpc.StreamServerInterceptor {
-	return func(srv any, stream grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		enriched, err := enrichContextFromJWT(stream.Context(), tokens)
-		if err != nil {
-			return err
-		}
-		return handler(srv, &wrappedServerStream{ServerStream: stream, ctx: enriched})
+// NewStreamServerJWTAuth проверяет JWT для streaming RPC.
+// publicMethods — полные имена RPC без обязательной авторизации (например Health/Watch).
+func NewStreamServerJWTAuth(tokens *sessionvalidation.TokenService, publicMethods ...string) grpc.StreamServerInterceptor {
+	public := make(map[string]struct{}, len(publicMethods))
+	for _, method := range publicMethods {
+		public[method] = struct{}{}
 	}
+
+	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if _, skip := public[info.FullMethod]; skip {
+			return handler(srv, stream)
+		}
+		// JWT после RecvMsg, чтобы proto-validate успел отсечь невалидный запрос.
+		return handler(srv, &jwtAuthServerStream{ServerStream: stream, tokens: tokens})
+	}
+}
+
+type jwtAuthServerStream struct {
+	grpc.ServerStream
+	tokens  *sessionvalidation.TokenService
+	ctx     context.Context
+	once    sync.Once
+	authErr error
+}
+
+func (s *jwtAuthServerStream) RecvMsg(m any) error {
+	if err := s.ServerStream.RecvMsg(m); err != nil {
+		return err
+	}
+	s.once.Do(func() {
+		s.ctx, s.authErr = enrichContextFromJWT(s.ServerStream.Context(), s.tokens)
+	})
+	return s.authErr
+}
+
+func (s *jwtAuthServerStream) Context() context.Context {
+	if s.ctx != nil {
+		return s.ctx
+	}
+	return s.ServerStream.Context()
 }
 
 func enrichContextFromJWT(ctx context.Context, tokens *sessionvalidation.TokenService) (context.Context, error) {

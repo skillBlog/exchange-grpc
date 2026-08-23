@@ -9,7 +9,30 @@ import (
 	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	ordertestserver "github.com/exchange-grpc/orderservice/pkg/testserver"
 	"github.com/exchange-grpc/test/integration"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+func TestStreamOrderUpdates_rejectsInvalidOrderIDWithoutAuth(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	stream, err := suite.OrderClient.StreamOrderUpdates(ctx, &orderv1.StreamOrderUpdatesRequest{
+		OrderId: "not-a-uuid",
+	})
+	if err != nil {
+		if status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("handshake status = %v, want InvalidArgument", status.Code(err))
+		}
+		return
+	}
+	_, recvErr := stream.Recv()
+	if status.Code(recvErr) != codes.InvalidArgument {
+		t.Fatalf("recv status = %v, want InvalidArgument (validate before jwt)", status.Code(recvErr))
+	}
+}
 
 func TestStreamOrderUpdates_receivesMultipleUpdates(t *testing.T) {
 	suite := integration.NewSuite(t)

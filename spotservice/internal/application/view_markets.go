@@ -2,12 +2,13 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	sharedgrpc "github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/spotservice/internal/domain"
+	"go.uber.org/zap"
 )
 
 const (
@@ -34,11 +35,15 @@ type ViewMarketsOutput struct {
 type ViewMarkets struct {
 	markets domain.MarketRepository
 	limiter ViewMarketsRateLimiter
+	log     *zap.Logger
 }
 
 // NewViewMarkets создаёт use case ViewMarkets.
-func NewViewMarkets(markets domain.MarketRepository, limiter ViewMarketsRateLimiter) *ViewMarkets {
-	return &ViewMarkets{markets: markets, limiter: limiter}
+func NewViewMarkets(markets domain.MarketRepository, limiter ViewMarketsRateLimiter, log *zap.Logger) *ViewMarkets {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &ViewMarkets{markets: markets, limiter: limiter, log: log}
 }
 
 // Execute возвращает страницу активных рынков с фильтрацией и пагинацией на уровне репозитория.
@@ -46,8 +51,10 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out
 	ctx, span := tracing.Start(ctx, "spot.ViewMarkets")
 	defer tracing.End(span, &err)
 
-	if uc.limiter != nil && input.UserID != "" && !uc.limiter.Allow(input.UserID) {
-		return ViewMarketsOutput{}, fmt.Errorf("%w: too many requests", domain.ErrRateLimited)
+	if uc.limiter != nil && input.UserID != "" {
+		if err = uc.limiter.Allow(ctx, input.UserID); err != nil {
+			return ViewMarketsOutput{}, err
+		}
 	}
 
 	pageSize := input.PageSize
@@ -73,6 +80,15 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out
 	if hasMore && len(markets) > 0 {
 		nextPageToken = markets[len(markets)-1].ID
 	}
+
+	fields := []zap.Field{
+		zap.String("user_id", input.UserID),
+		zap.Int("count", len(markets)),
+	}
+	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
+		fields = append(fields, zap.String("request_id", requestID))
+	}
+	uc.log.Info("view markets", fields...)
 
 	return ViewMarketsOutput{
 		Markets:       markets,

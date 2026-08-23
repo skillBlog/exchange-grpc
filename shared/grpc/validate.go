@@ -26,6 +26,33 @@ func NewUnaryServerProtoValidate(validator protovalidate.Validator) grpc.UnarySe
 	}
 }
 
+// NewStreamServerProtoValidate проверяет входящие protobuf-сообщения streaming RPC.
+func NewStreamServerProtoValidate(validator protovalidate.Validator) grpc.StreamServerInterceptor {
+	return func(srv any, stream grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if validator == nil {
+			return status.Error(codes.Internal, "protovalidate validator is not configured")
+		}
+		return handler(srv, &validatingServerStream{ServerStream: stream, validator: validator})
+	}
+}
+
+type validatingServerStream struct {
+	grpc.ServerStream
+	validator protovalidate.Validator
+}
+
+func (s *validatingServerStream) RecvMsg(m any) error {
+	if err := s.ServerStream.RecvMsg(m); err != nil {
+		return err
+	}
+	if msg, ok := m.(proto.Message); ok && msg != nil {
+		if err := s.validator.Validate(msg); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+	return nil
+}
+
 // NewProtoValidator создаёт protovalidate.Validator.
 func NewProtoValidator() (protovalidate.Validator, error) {
 	validator, err := protovalidate.New()

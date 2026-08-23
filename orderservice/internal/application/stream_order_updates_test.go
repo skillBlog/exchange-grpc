@@ -3,6 +3,7 @@ package application_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,5 +74,39 @@ func TestStreamOrderUpdates_closesOnTerminalStatus(t *testing.T) {
 	}
 	if len(sent) != 1 || sent[0] != domain.OrderStatusFilled {
 		t.Fatalf("sent = %v, want [filled]", sent)
+	}
+}
+
+func TestStreamOrderUpdates_nilHubReturnsImmediately(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	uc := application.NewStreamOrderUpdates(repo, nil)
+
+	now := time.Now().UTC()
+	order, err := domain.NewOrder(domain.NewOrderID(), "11111111-1111-1111-1111-111111111111", "BTC-USDT", domain.OrderSideBuy, domain.Money{}, mustDecimal(t, "1"), now)
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	if err := repo.Create(context.Background(), order); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- uc.Execute(context.Background(), application.StreamOrderUpdatesInput{
+			OrderID: order.ID,
+			UserID:  "11111111-1111-1111-1111-111111111111",
+		}, func(application.UpdateEvent) error { return nil })
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected error when hub is not configured")
+		}
+		if !strings.Contains(err.Error(), "order update hub is not configured") {
+			t.Fatalf("error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Execute hung on nil hub")
 	}
 }

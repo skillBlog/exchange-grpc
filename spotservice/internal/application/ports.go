@@ -1,6 +1,8 @@
 package application
 
+import "context"
+
 // ViewMarketsRateLimiter ограничивает частоту вызовов ViewMarkets по user_id.
 type ViewMarketsRateLimiter interface {
-	Allow(userID string) bool
+	Allow(ctx context.Context, userID string) error
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/userservice/internal/application"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
@@ -30,7 +31,7 @@ func TestRefreshToken_success(t *testing.T) {
 		t.Fatalf("register error = %v", err)
 	}
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute))
+	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
 	loginOut, err := login.Execute(context.Background(), application.LoginInput{
 		Email:    "refresh@example.com",
 		Password: "password123",
@@ -66,6 +67,58 @@ func TestRefreshToken_success(t *testing.T) {
 		RefreshToken: out.RefreshToken,
 	}); err != nil {
 		t.Fatalf("new refresh token should work: %v", err)
+	}
+}
+
+func TestRefreshToken_usesLiveRolesFromRepository(t *testing.T) {
+	repo := memory.NewUserRepository()
+	refreshRepo := memory.NewRefreshTokenRepository()
+	accessTokens, err := sessionvalidation.NewTokenService("test-secret", time.Hour)
+	if err != nil {
+		t.Fatalf("NewTokenService() error = %v", err)
+	}
+	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
+
+	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	if _, err := register.Execute(context.Background(), application.RegisterInput{
+		Email:    "roles@example.com",
+		Password: "password123",
+	}); err != nil {
+		t.Fatalf("register error = %v", err)
+	}
+
+	user, err := repo.GetByEmail(context.Background(), "roles@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail() error = %v", err)
+	}
+	user.Roles = append(user.Roles, roles.RoleTrader)
+	if err := repo.Save(context.Background(), user); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
+	loginOut, err := login.Execute(context.Background(), application.LoginInput{
+		Email:    "roles@example.com",
+		Password: "password123",
+	})
+	if err != nil {
+		t.Fatalf("login error = %v", err)
+	}
+
+	refreshUC := application.NewRefreshToken(repo, accessTokens, refreshTokens)
+	out, err := refreshUC.Execute(context.Background(), application.RefreshTokenInput{
+		RefreshToken: loginOut.RefreshToken,
+	})
+	if err != nil {
+		t.Fatalf("refresh error = %v", err)
+	}
+
+	claims, err := accessTokens.Validate(out.AccessToken)
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if len(claims.Roles) != 2 {
+		t.Fatalf("Roles = %v, want user and trader", claims.Roles)
 	}
 }
 
@@ -112,7 +165,7 @@ func TestLogout_revokesRefreshToken(t *testing.T) {
 		t.Fatalf("register error = %v", err)
 	}
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute))
+	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
 	loginOut, err := login.Execute(context.Background(), application.LoginInput{
 		Email:    "logout@example.com",
 		Password: "password123",
