@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
-	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
+	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
 	"github.com/exchange-grpc/shared/grpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	googlegrpc "google.golang.org/grpc"
@@ -41,10 +41,10 @@ func Dial(ctx context.Context, target string, opts ...googlegrpc.DialOption) (*g
 	dialOpts := []googlegrpc.DialOption{
 		googlegrpc.WithTransportCredentials(insecure.NewCredentials()),
 		googlegrpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-		googlegrpc.WithUnaryInterceptor(grpc.ChainUnaryClient(
+		googlegrpc.WithChainUnaryInterceptor(
 			grpc.UnaryClientRequestID,
 			grpc.UnaryClientForwardAuthorization,
-		)),
+		),
 	}
 	dialOpts = append(dialOpts, opts...)
 
@@ -52,31 +52,46 @@ func Dial(ctx context.Context, target string, opts ...googlegrpc.DialOption) (*g
 }
 
 // EnsureMarketAvailable загружает рынок и проверяет, что он доступен для торговли и разрешён пользователю.
-func (c *Client) EnsureMarketAvailable(ctx context.Context, marketID string, userRoles []string) error {
+func (c *Client) EnsureMarketAvailable(ctx context.Context, marketID string, userRoles []string) (domain.MarketLimits, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	resp, err := c.api.GetMarket(ctx, &spotv1.GetMarketRequest{MarketId: marketID})
 	if err != nil {
-		if status.Code(err) == codes.NotFound {
-			return fmt.Errorf("%w: market %q", domain.ErrNotFound, marketID)
+		switch status.Code(err) {
+		case codes.NotFound:
+			return domain.MarketLimits{}, fmt.Errorf("%w: market %q", domain.ErrNotFound, marketID)
+		case codes.PermissionDenied:
+			return domain.MarketLimits{}, fmt.Errorf("%w: market %q", domain.ErrForbidden, marketID)
+		default:
+			return domain.MarketLimits{}, fmt.Errorf("get market: %w", err)
 		}
-		return fmt.Errorf("get market: %w", err)
 	}
 
 	market := resp.GetMarket()
 	if market == nil {
-		return fmt.Errorf("%w: market %q", domain.ErrNotFound, marketID)
+		return domain.MarketLimits{}, fmt.Errorf("%w: market %q", domain.ErrNotFound, marketID)
 	}
 	if !market.GetEnabled() {
-		return fmt.Errorf("%w: market %q", domain.ErrMarketInactive, marketID)
+		return domain.MarketLimits{}, fmt.Errorf("%w: market %q", domain.ErrMarketInactive, marketID)
 	}
 
 	if !domain.IsAccessibleByRoles(protoRolesToStrings(market.GetAllowedRoles()), userRoles) {
-		return fmt.Errorf("%w: market %q", domain.ErrForbidden, marketID)
+		return domain.MarketLimits{}, fmt.Errorf("%w: market %q", domain.ErrForbidden, marketID)
 	}
 
-	return nil
+	return marketLimitsFromProto(market), nil
+}
+
+func marketLimitsFromProto(market *commonv1.Market) domain.MarketLimits {
+	if market == nil {
+		return domain.MarketLimits{}
+	}
+	return domain.MarketLimits{
+		MinOrderSize:      market.GetMinOrderSize().GetValue(),
+		QuantityPrecision: market.GetQuantityPrecision(),
+		MinNotional:       market.GetMinNotional().GetValue(),
+	}
 }
 
 func protoRolesToStrings(values []commonv1.Role) []string {

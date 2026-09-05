@@ -4,8 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/exchange-grpc/shared/logger"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -18,6 +21,7 @@ func UnaryServerLogging(log *zap.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		start := time.Now()
 		resp, err := handler(ctx, req)
+		rpcLog := logger.WithTrace(ctx, log)
 
 		fields := []zap.Field{
 			zap.String("method", info.FullMethod),
@@ -25,15 +29,11 @@ func UnaryServerLogging(log *zap.Logger) grpc.UnaryServerInterceptor {
 			zap.Duration("duration", time.Since(start)),
 		}
 		if err != nil {
-			if st, ok := status.FromError(err); ok {
-				fields = append(fields, zap.String("grpc_code", st.Code().String()))
-			}
-			fields = append(fields, zap.Error(err))
-			log.Warn("grpc request failed", fields...)
+			logRPCError(rpcLog, "grpc request failed", err, fields)
 			return resp, err
 		}
 
-		log.Debug("grpc request", fields...)
+		rpcLog.Debug("grpc request", fields...)
 		return resp, nil
 	}
 }
@@ -47,7 +47,8 @@ func StreamServerLogging(log *zap.Logger) grpc.StreamServerInterceptor {
 	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 		ctx := stream.Context()
-		log.Debug("grpc stream started",
+		rpcLog := logger.WithTrace(ctx, log)
+		rpcLog.Debug("grpc stream started",
 			zap.String("method", info.FullMethod),
 			zap.String("request_id", RequestIDFromContext(ctx)),
 		)
@@ -59,15 +60,43 @@ func StreamServerLogging(log *zap.Logger) grpc.StreamServerInterceptor {
 			zap.Duration("duration", time.Since(start)),
 		}
 		if err != nil {
-			if st, ok := status.FromError(err); ok {
-				fields = append(fields, zap.String("grpc_code", st.Code().String()))
-			}
-			fields = append(fields, zap.Error(err))
-			log.Warn("grpc stream failed", fields...)
+			logRPCError(rpcLog, "grpc stream failed", err, fields)
 			return err
 		}
 
-		log.Debug("grpc stream completed", fields...)
+		rpcLog.Debug("grpc stream completed", fields...)
 		return nil
+	}
+}
+
+func logRPCError(log *zap.Logger, msg string, err error, fields []zap.Field) {
+	code := codes.Unknown
+	if st, ok := status.FromError(err); ok {
+		code = st.Code()
+		fields = append(fields, zap.String("grpc_code", code.String()))
+	}
+	fields = append(fields, zap.Error(err))
+
+	switch rpcErrorLogLevel(code) {
+	case zapcore.DebugLevel:
+		log.Debug(msg, fields...)
+	case zapcore.ErrorLevel:
+		log.Error(msg, fields...)
+	default:
+		log.Warn(msg, fields...)
+	}
+}
+
+// rpcErrorLogLevel отделяет ожидаемые клиентские ошибки от сбоев инфраструктуры.
+// Клиентские коды не должны выглядеть как Error — иначе их легко принять за
+// причину для circuit breaker.
+func rpcErrorLogLevel(code codes.Code) zapcore.Level {
+	switch code {
+	case codes.InvalidArgument, codes.NotFound, codes.PermissionDenied, codes.Unauthenticated:
+		return zapcore.DebugLevel
+	case codes.Internal, codes.Unavailable, codes.DataLoss, codes.Unknown:
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.WarnLevel
 	}
 }

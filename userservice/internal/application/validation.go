@@ -35,17 +35,30 @@ func ValidatePassword(password string) error {
 		return fmt.Errorf("%w: password must be at least %d characters", domain.ErrInvalidArgument, minPasswordLength)
 	}
 
-	var hasLetter, hasDigit bool
-	for _, r := range password {
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, ch := range password {
 		switch {
-		case unicode.IsLetter(r):
-			hasLetter = true
-		case unicode.IsDigit(r):
+		case unicode.IsUpper(ch):
+			hasUpper = true
+		case unicode.IsLower(ch):
+			hasLower = true
+		case unicode.IsDigit(ch):
 			hasDigit = true
+		case unicode.IsPunct(ch) || unicode.IsSymbol(ch):
+			hasSpecial = true
 		}
 	}
-	if !hasLetter || !hasDigit {
-		return fmt.Errorf("%w: password must contain letters and digits", domain.ErrInvalidArgument)
+
+	switch {
+	case !hasUpper:
+		return fmt.Errorf("%w: password must contain at least one uppercase letter", domain.ErrInvalidArgument)
+	case !hasLower:
+		return fmt.Errorf("%w: password must contain at least one lowercase letter", domain.ErrInvalidArgument)
+	case !hasDigit:
+		return fmt.Errorf("%w: password must contain at least one digit", domain.ErrInvalidArgument)
+	case !hasSpecial:
+		return fmt.Errorf("%w: password must contain at least one special character", domain.ErrInvalidArgument)
 	}
+
 	return nil
 }

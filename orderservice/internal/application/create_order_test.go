@@ -14,11 +14,12 @@ import (
 )
 
 type marketCheckerStub struct {
-	err error
+	err    error
+	limits domain.MarketLimits
 }
 
-func (s marketCheckerStub) EnsureMarketAvailable(context.Context, string, []string) error {
-	return s.err
+func (s marketCheckerStub) EnsureMarketAvailable(context.Context, string, []string) (domain.MarketLimits, error) {
+	return s.limits, s.err
 }
 
 func mustMoney(t *testing.T, amount string) domain.Money {
@@ -95,12 +96,45 @@ func TestCreateOrder_idempotency(t *testing.T) {
 		t.Fatalf("order ids differ: %s vs %s", first.OrderID, second.OrderID)
 	}
 
-	all, err := repo.ListByUserID(context.Background(), "11111111-1111-1111-1111-111111111111", 100, "")
+	all, err := repo.ListByUserID(context.Background(), "11111111-1111-1111-1111-111111111111", 100, "", domain.ListOrdersFilter{})
 	if err != nil {
 		t.Fatalf("ListByUserID() error = %v", err)
 	}
 	if len(all) != 1 {
 		t.Fatalf("orders count = %d, want 1 (no duplicates)", len(all))
+	}
+}
+
+func TestCreateOrder_inFlightIdempotencyKey(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	idempotency := memory.NewIdempotencyStore()
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, idempotency, nil, nil, nil)
+
+	const (
+		userID = "11111111-1111-1111-1111-111111111111"
+		key    = "key-in-flight"
+	)
+	if _, _, err := idempotency.Reserve(context.Background(), userID, key, "22222222-2222-2222-2222-222222222222"); err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+
+	_, err := uc.Execute(context.Background(), application.CreateOrderInput{
+		UserID:         userID,
+		MarketID:       "BTC-USDT",
+		Side:           domain.OrderSideBuy,
+		Quantity:       mustDecimal(t, "0.1"),
+		IdempotencyKey: key,
+	})
+	if !errors.Is(err, domain.ErrFailedPrecondition) {
+		t.Fatalf("error = %v, want ErrFailedPrecondition", err)
+	}
+
+	all, err := repo.ListByUserID(context.Background(), userID, 100, "", domain.ListOrdersFilter{})
+	if err != nil {
+		t.Fatalf("ListByUserID() error = %v", err)
+	}
+	if len(all) != 0 {
+		t.Fatalf("orders count = %d, want 0 (no duplicate while key is reserved)", len(all))
 	}
 }
 
@@ -259,5 +293,85 @@ func TestCreateOrder_invalidInput(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestCreateOrder_rejectsQuantityBelowMarketMin(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	uc := application.NewCreateOrder(repo, marketCheckerStub{
+		limits: domain.MarketLimits{MinOrderSize: "0.0001", QuantityPrecision: 8, MinNotional: "10"},
+	}, nil, nil, nil, nil)
+
+	_, err := uc.Execute(context.Background(), application.CreateOrderInput{
+		UserID:   "11111111-1111-1111-1111-111111111111",
+		MarketID: "BTC-USDT",
+		Side:     domain.OrderSideBuy,
+		Quantity: mustDecimal(t, "0.00001"),
+	})
+	if !errors.Is(err, domain.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+	all, listErr := repo.ListByUserID(context.Background(), "11111111-1111-1111-1111-111111111111", 100, "", domain.ListOrdersFilter{})
+	if listErr != nil {
+		t.Fatalf("ListByUserID() error = %v", listErr)
+	}
+	if len(all) != 0 {
+		t.Fatalf("orders count = %d, want 0", len(all))
+	}
+}
+
+func TestCreateOrder_rejectsQuantityPrecision(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	uc := application.NewCreateOrder(repo, marketCheckerStub{
+		limits: domain.MarketLimits{MinOrderSize: "0.0001", QuantityPrecision: 8},
+	}, nil, nil, nil, nil)
+
+	_, err := uc.Execute(context.Background(), application.CreateOrderInput{
+		UserID:   "11111111-1111-1111-1111-111111111111",
+		MarketID: "BTC-USDT",
+		Side:     domain.OrderSideBuy,
+		Quantity: mustDecimal(t, "0.000100001"),
+	})
+	if !errors.Is(err, domain.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestCreateOrder_rejectsNotionalBelowMin(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	uc := application.NewCreateOrder(repo, marketCheckerStub{
+		limits: domain.MarketLimits{MinOrderSize: "0.0001", QuantityPrecision: 8, MinNotional: "10"},
+	}, nil, nil, nil, nil)
+
+	_, err := uc.Execute(context.Background(), application.CreateOrderInput{
+		UserID:   "11111111-1111-1111-1111-111111111111",
+		MarketID: "BTC-USDT",
+		Side:     domain.OrderSideBuy,
+		Price:    mustMoney(t, "100"),
+		Quantity: mustDecimal(t, "0.01"),
+	})
+	if !errors.Is(err, domain.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestCreateOrder_acceptsQuantityAtMarketLimits(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	uc := application.NewCreateOrder(repo, marketCheckerStub{
+		limits: domain.MarketLimits{MinOrderSize: "0.0001", QuantityPrecision: 8, MinNotional: "10"},
+	}, nil, nil, nil, nil)
+
+	out, err := uc.Execute(context.Background(), application.CreateOrderInput{
+		UserID:   "11111111-1111-1111-1111-111111111111",
+		MarketID: "BTC-USDT",
+		Side:     domain.OrderSideBuy,
+		Price:    mustMoney(t, "100"),
+		Quantity: mustDecimal(t, "0.1"),
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if out.OrderID == "" {
+		t.Fatal("expected non-empty order id")
 	}
 }

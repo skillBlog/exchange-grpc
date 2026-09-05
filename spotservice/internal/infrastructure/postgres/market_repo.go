@@ -22,7 +22,8 @@ func NewMarketRepository(db *DB) *MarketRepository {
 // GetByID возвращает рынок по идентификатору.
 func (r *MarketRepository) GetByID(ctx context.Context, id string) (domain.Market, error) {
 	row := r.db.Pool.QueryRow(ctx, `
-		SELECT id, name, base_asset, quote_asset, enabled, allowed_roles
+		SELECT id, name, base_asset, quote_asset, enabled, allowed_roles,
+			min_order_size::text, quantity_precision, min_notional::text
 		FROM markets
 		WHERE id = $1
 	`, id)
@@ -44,7 +45,8 @@ func (r *MarketRepository) ListActivePage(ctx context.Context, userRoles []strin
 	}
 
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT id, name, base_asset, quote_asset, enabled, allowed_roles
+		SELECT id, name, base_asset, quote_asset, enabled, allowed_roles,
+			min_order_size::text, quantity_precision, min_notional::text
 		FROM markets
 		WHERE enabled = TRUE
 			AND ($2 = '' OR id > $2)
@@ -88,6 +90,9 @@ func scanMarket(row marketRow) (domain.Market, error) {
 		id, name, baseAsset, quoteAsset string
 		enabled                         bool
 		allowedRoles                    []string
+		minOrderSize                    string
+		quantityPrecision               int32
+		minNotional                     string
 	)
 	if err := row.Scan(
 		&id,
@@ -96,10 +101,22 @@ func scanMarket(row marketRow) (domain.Market, error) {
 		&quoteAsset,
 		&enabled,
 		&allowedRoles,
+		&minOrderSize,
+		&quantityPrecision,
+		&minNotional,
 	); err != nil {
 		return domain.Market{}, err
 	}
-	return domain.NewMarket(id, name, baseAsset, quoteAsset, enabled, allowedRoles)
+	market, err := domain.NewMarket(id, name, baseAsset, quoteAsset, enabled, allowedRoles)
+	if err != nil {
+		return domain.Market{}, err
+	}
+	market.MinOrderSize = minOrderSize
+	if quantityPrecision > 0 {
+		market.QuantityPrecision = uint32(quantityPrecision)
+	}
+	market.MinNotional = minNotional
+	return market, nil
 }
 
 var _ domain.MarketRepository = (*MarketRepository)(nil)

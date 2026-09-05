@@ -18,6 +18,7 @@ service OrderService {
   rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
   rpc StreamOrderUpdates(StreamOrderUpdatesRequest) returns (stream OrderUpdate);
+  rpc StreamUserOrderUpdates(StreamUserOrderUpdatesRequest) returns (stream OrderUpdate);
 }
 
 // CreateOrderRequest — параметры создания market-ордера.
@@ -61,8 +62,21 @@ message GetOrderStatusResponse {
 }
 
 // ListOrdersRequest — список ордеров текущего пользователя (user_id из JWT).
+// market_id и status опциональны: пустое значение не фильтрует.
 message ListOrdersRequest {
   common.v1.CursorPagination pagination = 1;
+  optional string market_id = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string = {
+      min_len: 1,
+      max_len: 64,
+      pattern: "^[A-Z0-9]+-[A-Z0-9]+$"
+    }
+  ];
+  optional common.v1.OrderStatus status = 3 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).enum = {defined_only: true, not_in: [0]}
+  ];
 }
 
 message ListOrdersResponse {
@@ -83,6 +97,23 @@ message OrderSummary {
 
 message StreamOrderUpdatesRequest {
   string order_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// StreamUserOrderUpdatesRequest — поток обновлений всех ордеров текущего пользователя (user_id из JWT).
+// Фильтры опциональны: пустое значение не сужает поток.
+message StreamUserOrderUpdatesRequest {
+  optional string market_id = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string = {
+      min_len: 1,
+      max_len: 64,
+      pattern: "^[A-Z0-9]+-[A-Z0-9]+$"
+    }
+  ];
+  optional common.v1.OrderStatus status = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).enum = {defined_only: true, not_in: [0]}
+  ];
 }
 
 message OrderUpdate {

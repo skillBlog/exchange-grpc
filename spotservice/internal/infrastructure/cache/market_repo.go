@@ -10,6 +10,8 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+const defaultFetchTimeout = 5 * time.Second
+
 type cacheEntry struct {
 	market    domain.Market
 	expiresAt time.Time
@@ -18,10 +20,11 @@ type cacheEntry struct {
 // MarketRepository кеширует GetByID поверх базового репозитория.
 // ListActivePage не кешируется: страницы зависят от ролей пользователя.
 type MarketRepository struct {
-	inner domain.MarketRepository
-	ttl   time.Duration
-	now   func() time.Time
-	group singleflight.Group
+	inner        domain.MarketRepository
+	ttl          time.Duration
+	fetchTimeout time.Duration
+	now          func() time.Time
+	group        singleflight.Group
 
 	mu   sync.RWMutex
 	byID map[string]cacheEntry
@@ -33,26 +36,30 @@ func NewMarketRepository(inner domain.MarketRepository, ttl time.Duration) *Mark
 		ttl = 30 * time.Second
 	}
 	return &MarketRepository{
-		inner: inner,
-		ttl:   ttl,
-		now:   time.Now,
-		byID:  make(map[string]cacheEntry),
+		inner:        inner,
+		ttl:          ttl,
+		fetchTimeout: defaultFetchTimeout,
+		now:          time.Now,
+		byID:         make(map[string]cacheEntry),
 	}
 }
 
 // GetByID возвращает рынок из кеша или базового репозитория.
-// Lock не удерживается на время обращения к БД; TTL считается от успешного чтения.
+// Caller ctx отмена не отменяет inner-запрос (singleflight попутчики).
 func (r *MarketRepository) GetByID(ctx context.Context, id string) (domain.Market, error) {
 	if market, ok := r.cached(id); ok {
 		return market, nil
 	}
 
-	value, err, _ := r.group.Do(id, func() (any, error) {
+	ch := r.group.DoChan(id, func() (any, error) {
 		if market, ok := r.cached(id); ok {
 			return market, nil
 		}
 
-		market, err := r.inner.GetByID(ctx, id)
+		innerCtx, cancel := context.WithTimeout(context.Background(), r.fetchTimeout)
+		defer cancel()
+
+		market, err := r.inner.GetByID(innerCtx, id)
 		if err != nil {
 			return domain.Market{}, err
 		}
@@ -62,24 +69,50 @@ func (r *MarketRepository) GetByID(ctx context.Context, id string) (domain.Marke
 		r.mu.Unlock()
 		return market, nil
 	})
-	if err != nil {
-		return domain.Market{}, err
+
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			return domain.Market{}, res.Err
+		}
+		market, ok := res.Val.(domain.Market)
+		if !ok {
+			return domain.Market{}, fmt.Errorf("cache: unexpected GetByID result type %T", res.Val)
+		}
+		return market, nil
+	case <-ctx.Done():
+		return domain.Market{}, ctx.Err()
 	}
-	market, ok := value.(domain.Market)
-	if !ok {
-		return domain.Market{}, fmt.Errorf("cache: unexpected GetByID result type %T", value)
-	}
-	return market, nil
 }
 
 func (r *MarketRepository) cached(id string) (domain.Market, bool) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
 	entry, ok := r.byID[id]
-	if !ok || !entry.expiresAt.After(r.now()) {
+	r.mu.RUnlock()
+	if !ok {
+		return domain.Market{}, false
+	}
+	if entry.expiresAt.After(r.now()) {
+		return entry.market, true
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok = r.byID[id]
+	if !ok {
+		return domain.Market{}, false
+	}
+	if !entry.expiresAt.After(r.now()) {
+		delete(r.byID, id)
 		return domain.Market{}, false
 	}
 	return entry.market, true
+}
+
+func (r *MarketRepository) cachedCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.byID)
 }
 
 // ListActivePage проксирует запрос в базовый репозиторий без кеша списка.

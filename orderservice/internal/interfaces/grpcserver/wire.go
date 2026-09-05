@@ -11,12 +11,13 @@ import (
 
 // Services группирует use case'ы Order для gRPC-обработчиков.
 type Services struct {
-	CreateOrder        *application.CreateOrder
-	GetOrderStatus     *application.GetOrderStatus
-	ListOrders         *application.ListOrders
-	StreamOrderUpdates *application.StreamOrderUpdates
-	UpdateOrderStatus  *application.UpdateOrderStatus
-	Hub                *hub.UpdateHub
+	CreateOrder            *application.CreateOrder
+	GetOrderStatus         *application.GetOrderStatus
+	ListOrders             *application.ListOrders
+	StreamOrderUpdates     *application.StreamOrderUpdates
+	StreamUserOrderUpdates *application.StreamUserOrderUpdates
+	UpdateOrderStatus      *application.UpdateOrderStatus
+	Hub                    *hub.UpdateHub
 }
 
 // NewServices подключает use case'ы Order с общим hub обновлений.
@@ -31,11 +32,12 @@ func NewServices(
 ) Services {
 	orderHub := hub.NewUpdateHub(hubBufferSize, log, hubPublishTimeout)
 	return Services{
-		Hub:                orderHub,
-		CreateOrder:        application.NewCreateOrder(orders, markets, idempotency, orderHub, limiter, log),
-		GetOrderStatus:     application.NewGetOrderStatus(orders),
-		ListOrders:         application.NewListOrders(orders),
-		StreamOrderUpdates: application.NewStreamOrderUpdates(orders, orderHub),
-		UpdateOrderStatus:  application.NewUpdateOrderStatus(orders, orderHub),
+		Hub:                    orderHub,
+		CreateOrder:            application.NewCreateOrder(orders, markets, idempotency, orderHub, limiter, log),
+		GetOrderStatus:         application.NewGetOrderStatus(orders),
+		ListOrders:             application.NewListOrders(orders),
+		StreamOrderUpdates:     application.NewStreamOrderUpdates(orders, orderHub),
+		StreamUserOrderUpdates: application.NewStreamUserOrderUpdates(orderHub),
+		UpdateOrderStatus:      application.NewUpdateOrderStatus(orders, orderHub),
 	}
 }

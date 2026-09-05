@@ -74,6 +74,7 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 	if err = uc.users.Save(ctx, user); err != nil {
 		return RegisterOutput{}, err
 	}
+	span.SetAttributes(tracing.Attr("user_id", user.ID))
 
 	accessToken, err := uc.accessTokens.Issue(user.ID, user.RoleStrings())
 	if err != nil {

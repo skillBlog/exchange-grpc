@@ -1,7 +1,8 @@
 -- +goose Up
-ALTER TABLE markets
-    ALTER COLUMN id TYPE VARCHAR(64);
+-- Исторический no-op: 00001 уже создаёт id VARCHAR(64).
+-- ALTER COLUMN ... TYPE VARCHAR(64) брал ACCESS EXCLUSIVE на markets без смены типа.
+-- Файл оставляем, чтобы не сбивать goose-версию 3 на уже накатанных БД.
+SELECT 1;
 
 -- +goose Down
-ALTER TABLE markets
-    ALTER COLUMN id TYPE TEXT;
+SELECT 1;

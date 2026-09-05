@@ -28,6 +28,7 @@ func NewGetOrderStatus(orders domain.OrderRepository) *GetOrderStatus {
 func (uc *GetOrderStatus) Execute(ctx context.Context, input GetOrderStatusInput) (order domain.Order, err error) {
 	ctx, span := tracing.Start(ctx, "order.GetOrderStatus",
 		tracing.Attr("order.id", strings.TrimSpace(input.OrderID)),
+		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),
 	)
 	defer tracing.End(span, &err)
 

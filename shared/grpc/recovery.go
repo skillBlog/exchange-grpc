@@ -4,6 +4,7 @@ import (
 	"context"
 	"runtime/debug"
 
+	"github.com/exchange-grpc/shared/logger"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,7 +22,7 @@ func UnaryServerRecovery(log *zap.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Error("grpc unary panic recovered",
+				logger.WithTrace(ctx, log).Error("grpc unary panic recovered",
 					zap.String("method", info.FullMethod),
 					zap.String("request_id", RequestIDFromContext(ctx)),
 					zap.Any("panic", recovered),
@@ -44,7 +45,7 @@ func StreamServerRecovery(log *zap.Logger) grpc.StreamServerInterceptor {
 	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Error("grpc stream panic recovered",
+				logger.WithTrace(stream.Context(), log).Error("grpc stream panic recovered",
 					zap.String("method", info.FullMethod),
 					zap.String("request_id", RequestIDFromContext(stream.Context())),
 					zap.Any("panic", recovered),

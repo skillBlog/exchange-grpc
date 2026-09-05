@@ -1,10 +1,10 @@
 package grpcserver
 
 import (
-	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
-	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
+	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -36,13 +36,34 @@ func (Mapper) CreateOrderRequestToInput(req *orderv1.CreateOrderRequest, userID 
 	}, nil
 }
 
-func (Mapper) ListOrdersRequestToInput(req *orderv1.ListOrdersRequest, userID string) application.ListOrdersInput {
+func (Mapper) ListOrdersRequestToInput(req *orderv1.ListOrdersRequest, userID string) (application.ListOrdersInput, error) {
 	input := application.ListOrdersInput{UserID: userID}
 	if pagination := req.GetPagination(); pagination != nil {
 		input.PageToken = pagination.GetPageToken()
 		input.PageSize = pagination.GetPageSize()
 	}
-	return input
+	input.MarketID = req.GetMarketId()
+	if req.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_UNSPECIFIED {
+		status, err := orderStatusFromProto(req.GetStatus())
+		if err != nil {
+			return application.ListOrdersInput{}, err
+		}
+		input.Status = status
+	}
+	return input, nil
+}
+
+func (Mapper) StreamUserOrderUpdatesRequestToInput(req *orderv1.StreamUserOrderUpdatesRequest, userID string) (application.StreamUserOrderUpdatesInput, error) {
+	input := application.StreamUserOrderUpdatesInput{UserID: userID}
+	input.MarketID = req.GetMarketId()
+	if req.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_UNSPECIFIED {
+		status, err := orderStatusFromProto(req.GetStatus())
+		if err != nil {
+			return application.StreamUserOrderUpdatesInput{}, err
+		}
+		input.Status = status
+	}
+	return input, nil
 }
 
 func (Mapper) ListOrdersOutputToResponse(out application.ListOrdersOutput) *orderv1.ListOrdersResponse {

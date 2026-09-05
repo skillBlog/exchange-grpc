@@ -22,7 +22,7 @@ func newRegisterUC(t *testing.T, repo domain.UserRepository) *application.Regist
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
 	refreshTokens := tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
-	return application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	return application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
 }
 
 func TestRegister_success(t *testing.T) {
@@ -31,7 +31,7 @@ func TestRegister_success(t *testing.T) {
 
 	out, err := uc.Execute(context.Background(), application.RegisterInput{
 		Email:    "user@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -58,7 +58,7 @@ func TestRegister_duplicateEmail(t *testing.T) {
 
 	input := application.RegisterInput{
 		Email:    "dup@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	}
 	if _, err := uc.Execute(context.Background(), input); err != nil {
 		t.Fatalf("first Execute() error = %v", err)
@@ -88,6 +88,18 @@ func TestRegister_weakPassword(t *testing.T) {
 	_, err := uc.Execute(context.Background(), application.RegisterInput{
 		Email:    "user@example.com",
 		Password: "12345678",
+	})
+	if !errors.Is(err, domain.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestRegister_passwordWithoutSpecial(t *testing.T) {
+	uc := newRegisterUC(t, memory.NewUserRepository())
+
+	_, err := uc.Execute(context.Background(), application.RegisterInput{
+		Email:    "user@example.com",
+		Password: "Password1",
 	})
 	if !errors.Is(err, domain.ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)

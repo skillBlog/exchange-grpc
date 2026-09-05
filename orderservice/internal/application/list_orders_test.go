@@ -105,3 +105,103 @@ func TestListOrders_paginatesWithLimit(t *testing.T) {
 	}
 	_ = ids
 }
+
+func TestListOrders_filtersByMarketID(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	list := application.NewListOrders(repo)
+	now := time.Now().UTC()
+	userID := "11111111-1111-1111-1111-111111111111"
+
+	for _, marketID := range []string{"BTC-USDT", "ETH-USDT", "BTC-USDT"} {
+		order, err := domain.NewOrder(
+			domain.NewOrderID(),
+			userID,
+			marketID,
+			domain.OrderSideBuy,
+			domain.Money{},
+			mustDecimal(t, "0.1"),
+			now,
+		)
+		if err != nil {
+			t.Fatalf("NewOrder() error = %v", err)
+		}
+		if err := repo.Create(context.Background(), order); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+	}
+
+	out, err := list.Execute(context.Background(), application.ListOrdersInput{
+		UserID:   userID,
+		MarketID: "BTC-USDT",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(out.Orders) != 2 {
+		t.Fatalf("orders count = %d, want 2", len(out.Orders))
+	}
+	for _, order := range out.Orders {
+		if order.MarketID != "BTC-USDT" {
+			t.Fatalf("market_id = %q, want BTC-USDT", order.MarketID)
+		}
+	}
+}
+
+func TestListOrders_filtersByStatus(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	list := application.NewListOrders(repo)
+	now := time.Now().UTC()
+	userID := "11111111-1111-1111-1111-111111111111"
+
+	created, err := domain.NewOrder(
+		domain.NewOrderID(),
+		userID,
+		"BTC-USDT",
+		domain.OrderSideBuy,
+		domain.Money{},
+		mustDecimal(t, "0.1"),
+		now,
+	)
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	if err := repo.Create(context.Background(), created); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	filled, err := domain.NewOrder(
+		domain.NewOrderID(),
+		userID,
+		"BTC-USDT",
+		domain.OrderSideBuy,
+		domain.Money{},
+		mustDecimal(t, "0.2"),
+		now.Add(time.Second),
+	)
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	if err := repo.Create(context.Background(), filled); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if err := repo.UpdateStatus(context.Background(), filled.ID, domain.OrderStatusFilled, now.Add(2*time.Second)); err != nil {
+		t.Fatalf("UpdateStatus() error = %v", err)
+	}
+
+	out, err := list.Execute(context.Background(), application.ListOrdersInput{
+		UserID: userID,
+		Status: domain.OrderStatusFilled,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(out.Orders) != 1 {
+		t.Fatalf("orders count = %d, want 1", len(out.Orders))
+	}
+	if out.Orders[0].ID != filled.ID {
+		t.Fatalf("order id = %q, want filled %q", out.Orders[0].ID, filled.ID)
+	}
+	if out.Orders[0].Status != domain.OrderStatusFilled {
+		t.Fatalf("status = %q, want filled", out.Orders[0].Status)
+	}
+}

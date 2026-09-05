@@ -26,13 +26,19 @@ const (
 // Активность определяется полем enabled (active / inactive).
 // id — торговый символ (BTC-USDT), не UUID; тот же контракт, что у GetMarketRequest.market_id.
 type Market struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	BaseAsset     string                 `protobuf:"bytes,3,opt,name=base_asset,json=baseAsset,proto3" json:"base_asset,omitempty"`
-	QuoteAsset    string                 `protobuf:"bytes,4,opt,name=quote_asset,json=quoteAsset,proto3" json:"quote_asset,omitempty"`
-	Enabled       bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	AllowedRoles  []Role                 `protobuf:"varint,6,rep,packed,name=allowed_roles,json=allowedRoles,proto3,enum=common.v1.Role" json:"allowed_roles,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name         string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	BaseAsset    string                 `protobuf:"bytes,3,opt,name=base_asset,json=baseAsset,proto3" json:"base_asset,omitempty"`
+	QuoteAsset   string                 `protobuf:"bytes,4,opt,name=quote_asset,json=quoteAsset,proto3" json:"quote_asset,omitempty"`
+	Enabled      bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	AllowedRoles []Role                 `protobuf:"varint,6,rep,packed,name=allowed_roles,json=allowedRoles,proto3,enum=common.v1.Role" json:"allowed_roles,omitempty"`
+	// Минимальный объём ордера в базовом активе. Не required: отсутствие = лимит не задан.
+	MinOrderSize *Decimal `protobuf:"bytes,7,opt,name=min_order_size,json=minOrderSize,proto3" json:"min_order_size,omitempty"`
+	// Число знаков после запятой для quantity. 0 = не задано.
+	QuantityPrecision uint32 `protobuf:"varint,8,opt,name=quantity_precision,json=quantityPrecision,proto3" json:"quantity_precision,omitempty"`
+	// Минимальная сумма ордера в котировочном активе (не Money: currency там зафиксирован как USD).
+	MinNotional   *Decimal `protobuf:"bytes,9,opt,name=min_notional,json=minNotional,proto3" json:"min_notional,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -109,11 +115,32 @@ func (x *Market) GetAllowedRoles() []Role {
 	return nil
 }
 
+func (x *Market) GetMinOrderSize() *Decimal {
+	if x != nil {
+		return x.MinOrderSize
+	}
+	return nil
+}
+
+func (x *Market) GetQuantityPrecision() uint32 {
+	if x != nil {
+		return x.QuantityPrecision
+	}
+	return 0
+}
+
+func (x *Market) GetMinNotional() *Decimal {
+	if x != nil {
+		return x.MinNotional
+	}
+	return nil
+}
+
 var File_common_v1_market_proto protoreflect.FileDescriptor
 
 const file_common_v1_market_proto_rawDesc = "" +
 	"\n" +
-	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\x1a\x14common/v1/role.proto\"\xab\x02\n" +
+	"\x16common/v1/market.proto\x12\tcommon.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17common/v1/decimal.proto\x1a\x14common/v1/role.proto\"\xcb\x03\n" +
 	"\x06Market\x120\n" +
 	"\x02id\x18\x01 \x01(\tB \xbaH\x1dr\x1b\x10\x01\x18@2\x15^[A-Z0-9]+-[A-Z0-9]+$R\x02id\x12\x1e\n" +
 	"\x04name\x18\x02 \x01(\tB\n" +
@@ -123,7 +150,10 @@ const file_common_v1_market_proto_rawDesc = "" +
 	"\vquote_asset\x18\x04 \x01(\tB\x16\xbaH\x13r\x11\x10\x01\x18\x102\v^[A-Z0-9]+$R\n" +
 	"quoteAsset\x12\x18\n" +
 	"\aenabled\x18\x05 \x01(\bR\aenabled\x12E\n" +
-	"\rallowed_roles\x18\x06 \x03(\x0e2\x0f.common.v1.RoleB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\fallowedRolesB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
+	"\rallowed_roles\x18\x06 \x03(\x0e2\x0f.common.v1.RoleB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\fallowedRoles\x128\n" +
+	"\x0emin_order_size\x18\a \x01(\v2\x12.common.v1.DecimalR\fminOrderSize\x12-\n" +
+	"\x12quantity_precision\x18\b \x01(\rR\x11quantityPrecision\x125\n" +
+	"\fmin_notional\x18\t \x01(\v2\x12.common.v1.DecimalR\vminNotionalB6Z4github.com/exchange-grpc/proto/pb/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_market_proto_rawDescOnce sync.Once
@@ -139,16 +169,19 @@ func file_common_v1_market_proto_rawDescGZIP() []byte {
 
 var file_common_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_common_v1_market_proto_goTypes = []any{
-	(*Market)(nil), // 0: common.v1.Market
-	(Role)(0),      // 1: common.v1.Role
+	(*Market)(nil),  // 0: common.v1.Market
+	(Role)(0),       // 1: common.v1.Role
+	(*Decimal)(nil), // 2: common.v1.Decimal
 }
 var file_common_v1_market_proto_depIdxs = []int32{
 	1, // 0: common.v1.Market.allowed_roles:type_name -> common.v1.Role
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 1: common.v1.Market.min_order_size:type_name -> common.v1.Decimal
+	2, // 2: common.v1.Market.min_notional:type_name -> common.v1.Decimal
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_common_v1_market_proto_init() }
@@ -156,6 +189,7 @@ func file_common_v1_market_proto_init() {
 	if File_common_v1_market_proto != nil {
 		return
 	}
+	file_common_v1_decimal_proto_init()
 	file_common_v1_role_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{

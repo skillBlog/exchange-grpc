@@ -48,7 +48,8 @@ func (r *AppRunner) Run() {
 		panic(err)
 	}
 	defer func() { _ = log.Sync() }()
-	logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
+	admin := logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
+	defer logger.ShutdownLevelAdmin(admin, log)
 
 	if err := r.run(log); err != nil {
 		log.Fatal("orderservice failed", zap.Error(err))
@@ -118,6 +119,9 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		sharedredis.WithMaxRetries(r.cfg.RedisMaxRetries),
 	)
 	if err != nil {
+		// In-memory fallback is intentional for local/dev when Redis is down.
+		// Limits are per-process: N replicas multiply the effective budget and
+		// weaken brute-force protection. Production should keep Redis required.
 		log.Warn("redis unavailable, using in-memory create order rate limiter", zap.Error(err))
 		createOrderLimiter = ratelimit.NewCreateOrderLimiter(rateLimitCfg)
 	} else {
@@ -136,7 +140,6 @@ func (r *AppRunner) run(log *zap.Logger) error {
 			validator,
 			tokens,
 			grpc_health_v1.Health_Check_FullMethodName,
-			grpc_health_v1.Health_Watch_FullMethodName,
 		)),
 		googlegrpc.StreamInterceptor(grpc.StreamServerInterceptors(
 			log,

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
-	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/shared/logger"
 	"go.uber.org/zap"
 )
@@ -19,6 +18,7 @@ const (
 type UpdateHub struct {
 	mu               sync.RWMutex
 	subscribers      map[string]map[chan application.UpdateEvent]struct{}
+	userSubscribers  map[string]map[chan application.UpdateEvent]struct{}
 	subscriberBuffer int
 	publishTimeout   time.Duration
 	log              *zap.Logger
@@ -38,63 +38,82 @@ func NewUpdateHub(subscriberBuffer int, log *zap.Logger, publishTimeout time.Dur
 	}
 	return &UpdateHub{
 		subscribers:      make(map[string]map[chan application.UpdateEvent]struct{}),
+		userSubscribers:  make(map[string]map[chan application.UpdateEvent]struct{}),
 		subscriberBuffer: subscriberBuffer,
 		publishTimeout:   publishTimeout,
 		log:              log,
 	}
 }
 
-// Publish уведомляет подписчиков о новом статусе ордера.
-// Блокирующая отправка с timeout; panic внутри recover'ится, чтобы не ронять CreateOrder.
-func (h *UpdateHub) Publish(orderID string, status domain.OrderStatus, updatedAt time.Time) {
+// Publish уведомляет подписчиков ордера и пользователя.
+// Паника на одном закрытом канале не прерывает рассылку остальным.
+func (h *UpdateHub) Publish(event application.UpdateEvent) {
 	if h == nil {
 		return
 	}
 
+	h.mu.RLock()
+	chans := make([]chan application.UpdateEvent, 0, len(h.subscribers[event.OrderID])+len(h.userSubscribers[event.UserID]))
+	for ch := range h.subscribers[event.OrderID] {
+		chans = append(chans, ch)
+	}
+	if event.UserID != "" {
+		for ch := range h.userSubscribers[event.UserID] {
+			chans = append(chans, ch)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, ch := range chans {
+		h.publishOne(ch, event)
+	}
+}
+
+func (h *UpdateHub) publishOne(ch chan application.UpdateEvent, event application.UpdateEvent) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			h.log.Error("order update publish panic recovered",
-				zap.String("order_id", orderID),
-				zap.String("status", string(status)),
+				zap.String("order_id", event.OrderID),
+				zap.String("user_id", event.UserID),
+				zap.String("status", string(event.Status)),
 				zap.Any("panic", recovered),
 			)
 		}
 	}()
 
-	event := application.UpdateEvent{OrderID: orderID, Status: status, UpdatedAt: updatedAt}
-
-	h.mu.RLock()
-	chans := make([]chan application.UpdateEvent, 0, len(h.subscribers[orderID]))
-	for ch := range h.subscribers[orderID] {
-		chans = append(chans, ch)
-	}
-	h.mu.RUnlock()
-
-	for _, ch := range chans {
-		timer := time.NewTimer(h.publishTimeout)
-		select {
-		case ch <- event:
-			timer.Stop()
-		case <-timer.C:
-			h.log.Warn("order update timed out waiting for subscriber",
-				zap.String("order_id", orderID),
-				zap.String("status", string(status)),
-				zap.Duration("timeout", h.publishTimeout),
-			)
-		}
+	timer := time.NewTimer(h.publishTimeout)
+	defer timer.Stop()
+	select {
+	case ch <- event:
+	case <-timer.C:
+		h.log.Warn("order update timed out waiting for subscriber",
+			zap.String("order_id", event.OrderID),
+			zap.String("user_id", event.UserID),
+			zap.String("status", string(event.Status)),
+			zap.Duration("timeout", h.publishTimeout),
+		)
 	}
 }
 
 // Subscribe регистрирует слушателя для конкретного ордера.
-// unsubscribe безопасен при повторных вызовах благодаря sync.Once.
 func (h *UpdateHub) Subscribe(orderID string) (<-chan application.UpdateEvent, func()) {
+	return h.subscribe(h.subscribers, orderID)
+}
+
+// SubscribeUser регистрирует слушателя для всех ордеров пользователя.
+func (h *UpdateHub) SubscribeUser(userID string) (<-chan application.UpdateEvent, func()) {
+	return h.subscribe(h.userSubscribers, userID)
+}
+
+// unsubscribe безопасен при повторных вызовах благодаря sync.Once.
+func (h *UpdateHub) subscribe(store map[string]map[chan application.UpdateEvent]struct{}, key string) (<-chan application.UpdateEvent, func()) {
 	ch := make(chan application.UpdateEvent, h.subscriberBuffer)
 
 	h.mu.Lock()
-	if h.subscribers[orderID] == nil {
-		h.subscribers[orderID] = make(map[chan application.UpdateEvent]struct{})
+	if store[key] == nil {
+		store[key] = make(map[chan application.UpdateEvent]struct{})
 	}
-	h.subscribers[orderID][ch] = struct{}{}
+	store[key][ch] = struct{}{}
 	h.mu.Unlock()
 
 	var once sync.Once
@@ -103,9 +122,9 @@ func (h *UpdateHub) Subscribe(orderID string) (<-chan application.UpdateEvent, f
 			h.mu.Lock()
 			defer h.mu.Unlock()
 
-			delete(h.subscribers[orderID], ch)
-			if len(h.subscribers[orderID]) == 0 {
-				delete(h.subscribers, orderID)
+			delete(store[key], ch)
+			if len(store[key]) == 0 {
+				delete(store, key)
 			}
 			close(ch)
 		})

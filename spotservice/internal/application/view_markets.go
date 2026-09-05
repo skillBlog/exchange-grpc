@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	sharedgrpc "github.com/exchange-grpc/shared/grpc"
+	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/spotservice/internal/domain"
@@ -48,7 +49,9 @@ func NewViewMarkets(markets domain.MarketRepository, limiter ViewMarketsRateLimi
 
 // Execute возвращает страницу активных рынков с фильтрацией и пагинацией на уровне репозитория.
 func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out ViewMarketsOutput, err error) {
-	ctx, span := tracing.Start(ctx, "spot.ViewMarkets")
+	ctx, span := tracing.Start(ctx, "spot.ViewMarkets",
+		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),
+	)
 	defer tracing.End(span, &err)
 
 	if uc.limiter != nil && input.UserID != "" {
@@ -88,7 +91,7 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out
 	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
 		fields = append(fields, zap.String("request_id", requestID))
 	}
-	uc.log.Info("view markets", fields...)
+	logger.WithTrace(ctx, uc.log).Info("view markets", fields...)
 
 	return ViewMarketsOutput{
 		Markets:       markets,

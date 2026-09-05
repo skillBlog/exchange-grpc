@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	sharedgrpc "github.com/exchange-grpc/shared/grpc"
+	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
 	"go.uber.org/zap"
@@ -15,6 +17,12 @@ import (
 const (
 	loginFailReasonUserNotFound = "user-not-found"
 	loginFailReasonBadPassword  = "bad-password"
+	timingDummyPassword         = "timing-dummy"
+)
+
+var (
+	dummyHashOnce sync.Once
+	dummyHash     string
 )
 
 // LoginInput — параметры входа пользователя.
@@ -85,11 +93,14 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 	user, err := uc.users.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) || errors.Is(err, domain.ErrNotFound) {
+			uc.compareDummy(password)
 			uc.logFailedLogin(ctx, email, input.ClientAddr, loginFailReasonUserNotFound)
 			return LoginOutput{}, domain.ErrUnauthorized
 		}
 		return LoginOutput{}, err
 	}
+
+	span.SetAttributes(tracing.Attr("user_id", user.ID))
 
 	if err = uc.hasher.Compare(user.PasswordHash, password); err != nil {
 		uc.logFailedLogin(ctx, email, input.ClientAddr, loginFailReasonBadPassword)
@@ -112,6 +123,25 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 	}, nil
 }
 
+func (uc *Login) compareDummy(password string) {
+	hash := uc.dummyPasswordHash()
+	if hash == "" {
+		return
+	}
+	_ = uc.hasher.Compare(hash, password)
+}
+
+func (uc *Login) dummyPasswordHash() string {
+	dummyHashOnce.Do(func() {
+		hash, err := uc.hasher.Hash(timingDummyPassword)
+		if err != nil {
+			return
+		}
+		dummyHash = hash
+	})
+	return dummyHash
+}
+
 func (uc *Login) logFailedLogin(ctx context.Context, email, clientAddr, reason string) {
 	fields := []zap.Field{
 		zap.String("email", email),
@@ -123,5 +153,5 @@ func (uc *Login) logFailedLogin(ctx context.Context, email, clientAddr, reason s
 	if clientAddr != "" {
 		fields = append(fields, zap.String("client_addr", clientAddr))
 	}
-	uc.log.Warn("login failed", fields...)
+	logger.WithTrace(ctx, uc.log).Warn("login failed", fields...)
 }

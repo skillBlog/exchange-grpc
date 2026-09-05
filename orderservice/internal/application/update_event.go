@@ -9,6 +9,8 @@ import (
 // UpdateEvent отправляется подписчикам на обновления ордера.
 type UpdateEvent struct {
 	OrderID   string
+	UserID    string
+	MarketID  string
 	Status    domain.OrderStatus
 	UpdatedAt time.Time
 }

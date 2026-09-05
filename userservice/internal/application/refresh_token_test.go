@@ -23,18 +23,18 @@ func TestRefreshToken_success(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "refresh@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	}); err != nil {
 		t.Fatalf("register error = %v", err)
 	}
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
+	login := application.NewLogin(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
 	loginOut, err := login.Execute(context.Background(), application.LoginInput{
 		Email:    "refresh@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if err != nil {
 		t.Fatalf("login error = %v", err)
@@ -79,10 +79,10 @@ func TestRefreshToken_usesLiveRolesFromRepository(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "roles@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	}); err != nil {
 		t.Fatalf("register error = %v", err)
 	}
@@ -96,10 +96,10 @@ func TestRefreshToken_usesLiveRolesFromRepository(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
+	login := application.NewLogin(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
 	loginOut, err := login.Execute(context.Background(), application.LoginInput{
 		Email:    "roles@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if err != nil {
 		t.Fatalf("login error = %v", err)
@@ -129,10 +129,10 @@ func TestGetUser_success(t *testing.T) {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
 	refreshTokens := tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
-	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
 	registerOut, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "profile@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if err != nil {
 		t.Fatalf("register error = %v", err)
@@ -157,18 +157,18 @@ func TestLogout_revokesRefreshToken(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "logout@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	}); err != nil {
 		t.Fatalf("register error = %v", err)
 	}
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
+	login := application.NewLogin(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
 	loginOut, err := login.Execute(context.Background(), application.LoginInput{
 		Email:    "logout@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if err != nil {
 		t.Fatalf("login error = %v", err)

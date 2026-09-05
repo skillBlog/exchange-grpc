@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -29,7 +30,11 @@ func (r *countingMarketRepo) GetByID(ctx context.Context, id string) (domain.Mar
 			}
 		}
 		if r.release != nil {
-			<-r.release
+			select {
+			case <-r.release:
+			case <-ctx.Done():
+				return domain.Market{}, ctx.Err()
+			}
 		}
 	}
 	return r.inner.GetByID(ctx, id)
@@ -166,4 +171,61 @@ func TestMarketRepository_doesNotHoldLockDuringInnerFetch(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("blocked GetByID did not finish")
 	}
+}
+
+func TestMarketRepository_evictsExpiredEntries(t *testing.T) {
+	clock := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	repo := NewMarketRepository(memory.NewSeededMarketRepository(), 30*time.Second)
+	repo.now = func() time.Time { return clock }
+
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if repo.cachedCount() != 1 {
+		t.Fatalf("cachedCount = %d, want 1", repo.cachedCount())
+	}
+
+	clock = clock.Add(31 * time.Second)
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+		t.Fatalf("GetByID() after TTL error = %v", err)
+	}
+	if repo.cachedCount() != 1 {
+		t.Fatalf("cachedCount after refresh = %d, want 1 (expired key deleted, new entry stored)", repo.cachedCount())
+	}
+}
+
+func TestMarketRepository_canceledCallerDoesNotWaitForInner(t *testing.T) {
+	inner := &countingMarketRepo{
+		inner:   memory.NewSeededMarketRepository(),
+		blockID: "BTC-USDT",
+		started: make(chan struct{}, 1),
+		release: make(chan struct{}),
+	}
+	repo := NewMarketRepository(inner, time.Minute)
+	repo.fetchTimeout = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := repo.GetByID(ctx, "BTC-USDT")
+		errCh <- err
+	}()
+
+	select {
+	case <-inner.started:
+	case <-time.After(time.Second):
+		t.Fatal("inner GetByID was not called")
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled GetByID still waited for inner fetch")
+	}
+
+	close(inner.release)
 }

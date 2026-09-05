@@ -20,6 +20,15 @@ func TestGetMarket_returnsOpenMarket(t *testing.T) {
 	if market.ID != "BTC-USDT" {
 		t.Fatalf("id = %q", market.ID)
 	}
+	if market.MinOrderSize != "0.0001" {
+		t.Fatalf("MinOrderSize = %q, want 0.0001", market.MinOrderSize)
+	}
+	if market.QuantityPrecision != 8 {
+		t.Fatalf("QuantityPrecision = %d, want 8", market.QuantityPrecision)
+	}
+	if market.MinNotional != "10" {
+		t.Fatalf("MinNotional = %q, want 10", market.MinNotional)
+	}
 }
 
 func TestGetMarket_rejectsForbiddenMarket(t *testing.T) {

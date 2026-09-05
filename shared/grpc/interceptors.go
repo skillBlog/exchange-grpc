@@ -8,7 +8,7 @@ import (
 )
 
 // UnaryServerInterceptors — канонический порядок unary-цепочки:
-// recovery → request_id → validate → logging → jwt.
+// recovery → request_id → validate → logging → jwt → span attrs.
 func UnaryServerInterceptors(
 	log *zap.Logger,
 	validator protovalidate.Validator,
@@ -21,11 +21,12 @@ func UnaryServerInterceptors(
 		NewUnaryServerProtoValidate(validator),
 		UnaryServerLogging(log),
 		NewUnaryServerJWTAuth(tokens, publicMethods...),
+		UnaryServerSpanAttrs(),
 	)
 }
 
 // StreamServerInterceptors — канонический порядок stream-цепочки:
-// recovery → request_id → validate → logging → jwt.
+// recovery → request_id → validate → logging → jwt → span attrs.
 func StreamServerInterceptors(
 	log *zap.Logger,
 	validator protovalidate.Validator,
@@ -38,5 +39,6 @@ func StreamServerInterceptors(
 		NewStreamServerProtoValidate(validator),
 		StreamServerLogging(log),
 		NewStreamServerJWTAuth(tokens, publicMethods...),
+		StreamServerSpanAttrs(),
 	)
 }

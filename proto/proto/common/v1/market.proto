@@ -5,6 +5,7 @@ package common.v1;
 option go_package = "github.com/exchange-grpc/proto/pb/common/v1;commonv1";
 
 import "buf/validate/validate.proto";
+import "common/v1/decimal.proto";
 import "common/v1/role.proto";
 
 // Market — спотовый торговый рынок.
@@ -29,4 +30,10 @@ message Market {
   }];
   bool enabled = 5;
   repeated Role allowed_roles = 6 [(buf.validate.field).repeated.items.enum = {defined_only: true, not_in: [0]}];
+  // Минимальный объём ордера в базовом активе. Не required: отсутствие = лимит не задан.
+  Decimal min_order_size = 7;
+  // Число знаков после запятой для quantity. 0 = не задано.
+  uint32 quantity_precision = 8;
+  // Минимальная сумма ордера в котировочном активе (не Money: currency там зафиксирован как USD).
+  Decimal min_notional = 9;
 }

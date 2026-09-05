@@ -1,14 +1,18 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+const defaultAdminShutdownTimeout = 2 * time.Second
 
 // New создаёт production zap-логгер с AtomicLevel (уровень из LOG_LEVEL).
 func New() (*zap.Logger, zap.AtomicLevel, error) {
@@ -48,15 +52,17 @@ func SetLevel(level zap.AtomicLevel, raw string) error {
 
 // ServeLevelAdmin поднимает HTTP endpoint AtomicLevel (GET/PUT), если addr не пустой.
 // Пример: LOG_LEVEL_ADDR=:9090 → curl -X PUT localhost:9090 -d '{"level":"debug"}'
-func ServeLevelAdmin(addr string, level zap.AtomicLevel, log *zap.Logger) {
+// Вызывающий код должен сделать ShutdownLevelAdmin до закрытия логгера.
+func ServeLevelAdmin(addr string, level zap.AtomicLevel, log *zap.Logger) *http.Server {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
-		return
+		return nil
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", level)
+	srv := &http.Server{Addr: addr, Handler: mux}
 	go func() {
-		if err := http.ListenAndServe(addr, mux); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			if log != nil {
 				log.Warn("log level admin server stopped", zap.Error(err))
 			}
@@ -64,5 +70,18 @@ func ServeLevelAdmin(addr string, level zap.AtomicLevel, log *zap.Logger) {
 	}()
 	if log != nil {
 		log.Info("log level admin listening", zap.String("addr", addr))
+	}
+	return srv
+}
+
+// ShutdownLevelAdmin останавливает admin HTTP-сервер. nil безопасен.
+func ShutdownLevelAdmin(srv *http.Server, log *zap.Logger) {
+	if srv == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultAdminShutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil && log != nil {
+		log.Warn("log level admin shutdown", zap.Error(err))
 	}
 }

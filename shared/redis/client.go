@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -71,6 +72,16 @@ func applyConnLifetimeDefaults(o *redis.Options) {
 	}
 }
 
+func applyOptions(parsed *redis.Options, opts ...Option) {
+	// Дефолты до пользовательских Option: явный 0 (= без лимита) не затирается.
+	applyConnLifetimeDefaults(parsed)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(parsed)
+		}
+	}
+}
+
 // Connect открывает соединение с Redis.
 func Connect(ctx context.Context, url string, opts ...Option) (*Client, error) {
 	parsed, err := redis.ParseURL(url)
@@ -78,14 +89,13 @@ func Connect(ctx context.Context, url string, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("parse redis url: %w", err)
 	}
 
-	for _, opt := range opts {
-		if opt != nil {
-			opt(parsed)
-		}
-	}
-	applyConnLifetimeDefaults(parsed)
+	applyOptions(parsed, opts...)
 
 	rdb := redis.NewClient(parsed)
+	if err := redisotel.InstrumentTracing(rdb); err != nil {
+		_ = rdb.Close()
+		return nil, fmt.Errorf("instrument redis tracing: %w", err)
+	}
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		_ = rdb.Close()
 		return nil, fmt.Errorf("ping redis: %w", err)

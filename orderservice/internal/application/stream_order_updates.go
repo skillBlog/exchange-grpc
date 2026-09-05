@@ -30,6 +30,7 @@ func NewStreamOrderUpdates(orders domain.OrderRepository, hub OrderUpdateHub) *S
 func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpdatesInput, send func(UpdateEvent) error) (err error) {
 	ctx, span := tracing.Start(ctx, "order.StreamOrderUpdates",
 		tracing.Attr("order.id", strings.TrimSpace(input.OrderID)),
+		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),
 	)
 	defer tracing.End(span, &err)
 

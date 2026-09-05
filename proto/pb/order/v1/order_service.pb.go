@@ -309,9 +309,12 @@ func (x *GetOrderStatusResponse) GetUpdatedAt() *timestamppb.Timestamp {
 }
 
 // ListOrdersRequest — список ордеров текущего пользователя (user_id из JWT).
+// market_id и status опциональны: пустое значение не фильтрует.
 type ListOrdersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Pagination    *v1.CursorPagination   `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	MarketId      *string                `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3,oneof" json:"market_id,omitempty"`
+	Status        *v1.OrderStatus        `protobuf:"varint,3,opt,name=status,proto3,enum=common.v1.OrderStatus,oneof" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -351,6 +354,20 @@ func (x *ListOrdersRequest) GetPagination() *v1.CursorPagination {
 		return x.Pagination
 	}
 	return nil
+}
+
+func (x *ListOrdersRequest) GetMarketId() string {
+	if x != nil && x.MarketId != nil {
+		return *x.MarketId
+	}
+	return ""
+}
+
+func (x *ListOrdersRequest) GetStatus() v1.OrderStatus {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return v1.OrderStatus(0)
 }
 
 type ListOrdersResponse struct {
@@ -549,6 +566,60 @@ func (x *StreamOrderUpdatesRequest) GetOrderId() string {
 	return ""
 }
 
+// StreamUserOrderUpdatesRequest — поток обновлений всех ордеров текущего пользователя (user_id из JWT).
+// Фильтры опциональны: пустое значение не сужает поток.
+type StreamUserOrderUpdatesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MarketId      *string                `protobuf:"bytes,1,opt,name=market_id,json=marketId,proto3,oneof" json:"market_id,omitempty"`
+	Status        *v1.OrderStatus        `protobuf:"varint,2,opt,name=status,proto3,enum=common.v1.OrderStatus,oneof" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamUserOrderUpdatesRequest) Reset() {
+	*x = StreamUserOrderUpdatesRequest{}
+	mi := &file_order_v1_order_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamUserOrderUpdatesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamUserOrderUpdatesRequest) ProtoMessage() {}
+
+func (x *StreamUserOrderUpdatesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_order_v1_order_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamUserOrderUpdatesRequest.ProtoReflect.Descriptor instead.
+func (*StreamUserOrderUpdatesRequest) Descriptor() ([]byte, []int) {
+	return file_order_v1_order_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *StreamUserOrderUpdatesRequest) GetMarketId() string {
+	if x != nil && x.MarketId != nil {
+		return *x.MarketId
+	}
+	return ""
+}
+
+func (x *StreamUserOrderUpdatesRequest) GetStatus() v1.OrderStatus {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return v1.OrderStatus(0)
+}
+
 type OrderUpdate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
@@ -560,7 +631,7 @@ type OrderUpdate struct {
 
 func (x *OrderUpdate) Reset() {
 	*x = OrderUpdate{}
-	mi := &file_order_v1_order_service_proto_msgTypes[8]
+	mi := &file_order_v1_order_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -572,7 +643,7 @@ func (x *OrderUpdate) String() string {
 func (*OrderUpdate) ProtoMessage() {}
 
 func (x *OrderUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_order_v1_order_service_proto_msgTypes[8]
+	mi := &file_order_v1_order_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -585,7 +656,7 @@ func (x *OrderUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderUpdate.ProtoReflect.Descriptor instead.
 func (*OrderUpdate) Descriptor() ([]byte, []int) {
-	return file_order_v1_order_service_proto_rawDescGZIP(), []int{8}
+	return file_order_v1_order_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *OrderUpdate) GetOrderId() string {
@@ -638,11 +709,17 @@ const file_order_v1_order_service_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"P\n" +
+	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xf4\x01\n" +
 	"\x11ListOrdersRequest\x12;\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1b.common.v1.CursorPaginationR\n" +
-	"pagination\"|\n" +
+	"pagination\x12E\n" +
+	"\tmarket_id\x18\x02 \x01(\tB#\xbaH \xd8\x01\x01r\x1b\x10\x01\x18@2\x15^[A-Z0-9]+-[A-Z0-9]+$H\x00R\bmarketId\x88\x01\x01\x12B\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x16.common.v1.OrderStatusB\r\xbaH\n" +
+	"\xd8\x01\x01\x82\x01\x04\x10\x01 \x00H\x01R\x06status\x88\x01\x01B\f\n" +
+	"\n" +
+	"_market_idB\t\n" +
+	"\a_status\"|\n" +
 	"\x12ListOrdersResponse\x12.\n" +
 	"\x06orders\x18\x01 \x03(\v2\x16.order.v1.OrderSummaryR\x06orders\x126\n" +
 	"\tpage_info\x18\x02 \x01(\v2\x19.common.v1.CursorPageInfoR\bpageInfo\"\xf8\x02\n" +
@@ -658,18 +735,26 @@ const file_order_v1_order_service_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"@\n" +
 	"\x19StreamOrderUpdatesRequest\x12#\n" +
-	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\"\x9d\x01\n" +
+	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\"\xc3\x01\n" +
+	"\x1dStreamUserOrderUpdatesRequest\x12E\n" +
+	"\tmarket_id\x18\x01 \x01(\tB#\xbaH \xd8\x01\x01r\x1b\x10\x01\x18@2\x15^[A-Z0-9]+-[A-Z0-9]+$H\x00R\bmarketId\x88\x01\x01\x12B\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.common.v1.OrderStatusB\r\xbaH\n" +
+	"\xd8\x01\x01\x82\x01\x04\x10\x01 \x00H\x01R\x06status\x88\x01\x01B\f\n" +
+	"\n" +
+	"_market_idB\t\n" +
+	"\a_status\"\x9d\x01\n" +
 	"\vOrderUpdate\x12#\n" +
 	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\x12.\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\x129\n" +
 	"\n" +
-	"updated_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xcc\x02\n" +
+	"updated_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xa8\x03\n" +
 	"\fOrderService\x12J\n" +
 	"\vCreateOrder\x12\x1c.order.v1.CreateOrderRequest\x1a\x1d.order.v1.CreateOrderResponse\x12S\n" +
 	"\x0eGetOrderStatus\x12\x1f.order.v1.GetOrderStatusRequest\x1a .order.v1.GetOrderStatusResponse\x12G\n" +
 	"\n" +
 	"ListOrders\x12\x1b.order.v1.ListOrdersRequest\x1a\x1c.order.v1.ListOrdersResponse\x12R\n" +
-	"\x12StreamOrderUpdates\x12#.order.v1.StreamOrderUpdatesRequest\x1a\x15.order.v1.OrderUpdate0\x01B4Z2github.com/exchange-grpc/proto/pb/order/v1;orderv1b\x06proto3"
+	"\x12StreamOrderUpdates\x12#.order.v1.StreamOrderUpdatesRequest\x1a\x15.order.v1.OrderUpdate0\x01\x12Z\n" +
+	"\x16StreamUserOrderUpdates\x12'.order.v1.StreamUserOrderUpdatesRequest\x1a\x15.order.v1.OrderUpdate0\x01B4Z2github.com/exchange-grpc/proto/pb/order/v1;orderv1b\x06proto3"
 
 var (
 	file_order_v1_order_service_proto_rawDescOnce sync.Once
@@ -683,60 +768,65 @@ func file_order_v1_order_service_proto_rawDescGZIP() []byte {
 	return file_order_v1_order_service_proto_rawDescData
 }
 
-var file_order_v1_order_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_order_v1_order_service_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_order_v1_order_service_proto_goTypes = []any{
-	(*CreateOrderRequest)(nil),        // 0: order.v1.CreateOrderRequest
-	(*CreateOrderResponse)(nil),       // 1: order.v1.CreateOrderResponse
-	(*GetOrderStatusRequest)(nil),     // 2: order.v1.GetOrderStatusRequest
-	(*GetOrderStatusResponse)(nil),    // 3: order.v1.GetOrderStatusResponse
-	(*ListOrdersRequest)(nil),         // 4: order.v1.ListOrdersRequest
-	(*ListOrdersResponse)(nil),        // 5: order.v1.ListOrdersResponse
-	(*OrderSummary)(nil),              // 6: order.v1.OrderSummary
-	(*StreamOrderUpdatesRequest)(nil), // 7: order.v1.StreamOrderUpdatesRequest
-	(*OrderUpdate)(nil),               // 8: order.v1.OrderUpdate
-	(v1.OrderSide)(0),                 // 9: common.v1.OrderSide
-	(*v1.Money)(nil),                  // 10: common.v1.Money
-	(*v1.Decimal)(nil),                // 11: common.v1.Decimal
-	(v1.OrderStatus)(0),               // 12: common.v1.OrderStatus
-	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
-	(*v1.CursorPagination)(nil),       // 14: common.v1.CursorPagination
-	(*v1.CursorPageInfo)(nil),         // 15: common.v1.CursorPageInfo
+	(*CreateOrderRequest)(nil),            // 0: order.v1.CreateOrderRequest
+	(*CreateOrderResponse)(nil),           // 1: order.v1.CreateOrderResponse
+	(*GetOrderStatusRequest)(nil),         // 2: order.v1.GetOrderStatusRequest
+	(*GetOrderStatusResponse)(nil),        // 3: order.v1.GetOrderStatusResponse
+	(*ListOrdersRequest)(nil),             // 4: order.v1.ListOrdersRequest
+	(*ListOrdersResponse)(nil),            // 5: order.v1.ListOrdersResponse
+	(*OrderSummary)(nil),                  // 6: order.v1.OrderSummary
+	(*StreamOrderUpdatesRequest)(nil),     // 7: order.v1.StreamOrderUpdatesRequest
+	(*StreamUserOrderUpdatesRequest)(nil), // 8: order.v1.StreamUserOrderUpdatesRequest
+	(*OrderUpdate)(nil),                   // 9: order.v1.OrderUpdate
+	(v1.OrderSide)(0),                     // 10: common.v1.OrderSide
+	(*v1.Money)(nil),                      // 11: common.v1.Money
+	(*v1.Decimal)(nil),                    // 12: common.v1.Decimal
+	(v1.OrderStatus)(0),                   // 13: common.v1.OrderStatus
+	(*timestamppb.Timestamp)(nil),         // 14: google.protobuf.Timestamp
+	(*v1.CursorPagination)(nil),           // 15: common.v1.CursorPagination
+	(*v1.CursorPageInfo)(nil),             // 16: common.v1.CursorPageInfo
 }
 var file_order_v1_order_service_proto_depIdxs = []int32{
-	9,  // 0: order.v1.CreateOrderRequest.side:type_name -> common.v1.OrderSide
-	10, // 1: order.v1.CreateOrderRequest.price:type_name -> common.v1.Money
-	11, // 2: order.v1.CreateOrderRequest.quantity:type_name -> common.v1.Decimal
-	12, // 3: order.v1.CreateOrderResponse.status:type_name -> common.v1.OrderStatus
-	9,  // 4: order.v1.GetOrderStatusResponse.side:type_name -> common.v1.OrderSide
-	10, // 5: order.v1.GetOrderStatusResponse.price:type_name -> common.v1.Money
-	11, // 6: order.v1.GetOrderStatusResponse.quantity:type_name -> common.v1.Decimal
-	12, // 7: order.v1.GetOrderStatusResponse.status:type_name -> common.v1.OrderStatus
-	13, // 8: order.v1.GetOrderStatusResponse.created_at:type_name -> google.protobuf.Timestamp
-	13, // 9: order.v1.GetOrderStatusResponse.updated_at:type_name -> google.protobuf.Timestamp
-	14, // 10: order.v1.ListOrdersRequest.pagination:type_name -> common.v1.CursorPagination
-	6,  // 11: order.v1.ListOrdersResponse.orders:type_name -> order.v1.OrderSummary
-	15, // 12: order.v1.ListOrdersResponse.page_info:type_name -> common.v1.CursorPageInfo
-	9,  // 13: order.v1.OrderSummary.side:type_name -> common.v1.OrderSide
-	10, // 14: order.v1.OrderSummary.price:type_name -> common.v1.Money
-	11, // 15: order.v1.OrderSummary.quantity:type_name -> common.v1.Decimal
-	12, // 16: order.v1.OrderSummary.status:type_name -> common.v1.OrderStatus
-	13, // 17: order.v1.OrderSummary.created_at:type_name -> google.protobuf.Timestamp
-	13, // 18: order.v1.OrderSummary.updated_at:type_name -> google.protobuf.Timestamp
-	12, // 19: order.v1.OrderUpdate.status:type_name -> common.v1.OrderStatus
-	13, // 20: order.v1.OrderUpdate.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 21: order.v1.OrderService.CreateOrder:input_type -> order.v1.CreateOrderRequest
-	2,  // 22: order.v1.OrderService.GetOrderStatus:input_type -> order.v1.GetOrderStatusRequest
-	4,  // 23: order.v1.OrderService.ListOrders:input_type -> order.v1.ListOrdersRequest
-	7,  // 24: order.v1.OrderService.StreamOrderUpdates:input_type -> order.v1.StreamOrderUpdatesRequest
-	1,  // 25: order.v1.OrderService.CreateOrder:output_type -> order.v1.CreateOrderResponse
-	3,  // 26: order.v1.OrderService.GetOrderStatus:output_type -> order.v1.GetOrderStatusResponse
-	5,  // 27: order.v1.OrderService.ListOrders:output_type -> order.v1.ListOrdersResponse
-	8,  // 28: order.v1.OrderService.StreamOrderUpdates:output_type -> order.v1.OrderUpdate
-	25, // [25:29] is the sub-list for method output_type
-	21, // [21:25] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	10, // 0: order.v1.CreateOrderRequest.side:type_name -> common.v1.OrderSide
+	11, // 1: order.v1.CreateOrderRequest.price:type_name -> common.v1.Money
+	12, // 2: order.v1.CreateOrderRequest.quantity:type_name -> common.v1.Decimal
+	13, // 3: order.v1.CreateOrderResponse.status:type_name -> common.v1.OrderStatus
+	10, // 4: order.v1.GetOrderStatusResponse.side:type_name -> common.v1.OrderSide
+	11, // 5: order.v1.GetOrderStatusResponse.price:type_name -> common.v1.Money
+	12, // 6: order.v1.GetOrderStatusResponse.quantity:type_name -> common.v1.Decimal
+	13, // 7: order.v1.GetOrderStatusResponse.status:type_name -> common.v1.OrderStatus
+	14, // 8: order.v1.GetOrderStatusResponse.created_at:type_name -> google.protobuf.Timestamp
+	14, // 9: order.v1.GetOrderStatusResponse.updated_at:type_name -> google.protobuf.Timestamp
+	15, // 10: order.v1.ListOrdersRequest.pagination:type_name -> common.v1.CursorPagination
+	13, // 11: order.v1.ListOrdersRequest.status:type_name -> common.v1.OrderStatus
+	6,  // 12: order.v1.ListOrdersResponse.orders:type_name -> order.v1.OrderSummary
+	16, // 13: order.v1.ListOrdersResponse.page_info:type_name -> common.v1.CursorPageInfo
+	10, // 14: order.v1.OrderSummary.side:type_name -> common.v1.OrderSide
+	11, // 15: order.v1.OrderSummary.price:type_name -> common.v1.Money
+	12, // 16: order.v1.OrderSummary.quantity:type_name -> common.v1.Decimal
+	13, // 17: order.v1.OrderSummary.status:type_name -> common.v1.OrderStatus
+	14, // 18: order.v1.OrderSummary.created_at:type_name -> google.protobuf.Timestamp
+	14, // 19: order.v1.OrderSummary.updated_at:type_name -> google.protobuf.Timestamp
+	13, // 20: order.v1.StreamUserOrderUpdatesRequest.status:type_name -> common.v1.OrderStatus
+	13, // 21: order.v1.OrderUpdate.status:type_name -> common.v1.OrderStatus
+	14, // 22: order.v1.OrderUpdate.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 23: order.v1.OrderService.CreateOrder:input_type -> order.v1.CreateOrderRequest
+	2,  // 24: order.v1.OrderService.GetOrderStatus:input_type -> order.v1.GetOrderStatusRequest
+	4,  // 25: order.v1.OrderService.ListOrders:input_type -> order.v1.ListOrdersRequest
+	7,  // 26: order.v1.OrderService.StreamOrderUpdates:input_type -> order.v1.StreamOrderUpdatesRequest
+	8,  // 27: order.v1.OrderService.StreamUserOrderUpdates:input_type -> order.v1.StreamUserOrderUpdatesRequest
+	1,  // 28: order.v1.OrderService.CreateOrder:output_type -> order.v1.CreateOrderResponse
+	3,  // 29: order.v1.OrderService.GetOrderStatus:output_type -> order.v1.GetOrderStatusResponse
+	5,  // 30: order.v1.OrderService.ListOrders:output_type -> order.v1.ListOrdersResponse
+	9,  // 31: order.v1.OrderService.StreamOrderUpdates:output_type -> order.v1.OrderUpdate
+	9,  // 32: order.v1.OrderService.StreamUserOrderUpdates:output_type -> order.v1.OrderUpdate
+	28, // [28:33] is the sub-list for method output_type
+	23, // [23:28] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_order_v1_order_service_proto_init() }
@@ -744,13 +834,15 @@ func file_order_v1_order_service_proto_init() {
 	if File_order_v1_order_service_proto != nil {
 		return
 	}
+	file_order_v1_order_service_proto_msgTypes[4].OneofWrappers = []any{}
+	file_order_v1_order_service_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_order_v1_order_service_proto_rawDesc), len(file_order_v1_order_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

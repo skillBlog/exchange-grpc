@@ -9,12 +9,15 @@ import (
 
 // Market — спотовая торговая пара, доступная на бирже.
 type Market struct {
-	ID           string
-	Name         string
-	BaseAsset    string
-	QuoteAsset   string
-	Enabled      bool
-	AllowedRoles []string
+	ID                string
+	Name              string
+	BaseAsset         string
+	QuoteAsset        string
+	Enabled           bool
+	AllowedRoles      []string
+	MinOrderSize      string
+	QuantityPrecision uint32
+	MinNotional       string
 }
 
 const maxMarketIDLen = 64

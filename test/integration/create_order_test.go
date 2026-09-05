@@ -70,7 +70,7 @@ func TestCreateOrder_SucceedsForActiveMarket(t *testing.T) {
 		MarketId: "BTC-USDT",
 		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
 		Price:    &commonv1.Money{Amount: "100", Currency: "USD"},
-		Quantity: &commonv1.Decimal{Value: "0.01"},
+		Quantity: &commonv1.Decimal{Value: "0.1"},
 	})
 	if err != nil {
 		t.Fatalf("CreateOrder() error = %v", err)
@@ -140,5 +140,54 @@ func TestCreateOrder_RequiresAuth(t *testing.T) {
 	})
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("status = %v, want Unauthenticated", status.Code(err))
+	}
+}
+
+func TestCreateOrder_RejectsQuantityBelowMin(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
+	defer cancel()
+
+	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "BTC-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Quantity: &commonv1.Decimal{Value: "0.00001"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestCreateOrder_RejectsQuantityPrecision(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
+	defer cancel()
+
+	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "BTC-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Quantity: &commonv1.Decimal{Value: "0.000100001"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestCreateOrder_RejectsNotionalBelowMin(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
+	defer cancel()
+
+	_, err := suite.OrderClient.CreateOrder(ctx, &orderv1.CreateOrderRequest{
+		MarketId: "BTC-USDT",
+		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
+		Price:    &commonv1.Money{Amount: "100", Currency: "USD"},
+		Quantity: &commonv1.Decimal{Value: "0.01"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status = %v, want InvalidArgument", status.Code(err))
 	}
 }

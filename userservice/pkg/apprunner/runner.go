@@ -49,7 +49,8 @@ func (r *AppRunner) Run() {
 		panic(err)
 	}
 	defer func() { _ = log.Sync() }()
-	logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
+	admin := logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
+	defer logger.ShutdownLevelAdmin(admin, log)
 
 	if err := r.run(log); err != nil {
 		log.Fatal("userservice failed", zap.Error(err))
@@ -93,7 +94,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	userRepo := postgres.NewUserRepository(db)
 	refreshRepo := postgres.NewRefreshTokenRepository(db)
-	hasher := bcrypt.NewHasher()
+	hasher := bcrypt.NewHasher(r.cfg.BcryptCost)
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, r.cfg.RefreshTokenTTL)
 
 	var loginLimiter application.LoginRateLimiter
@@ -105,6 +106,9 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		sharedredis.WithMaxRetries(r.cfg.RedisMaxRetries),
 	)
 	if err != nil {
+		// In-memory fallback is intentional for local/dev when Redis is down.
+		// Limits are per-process: N replicas multiply the effective budget and
+		// weaken brute-force protection. Production should keep Redis required.
 		log.Warn("redis unavailable, using in-memory login rate limiter", zap.Error(err))
 		loginLimiter = ratelimit.NewLoginLimiter(r.cfg.LoginRateLimit, r.cfg.LoginRateWindow)
 	} else {
@@ -131,6 +135,11 @@ func (r *AppRunner) run(log *zap.Logger) error {
 			userv1.UserService_RefreshToken_FullMethodName,
 			userv1.UserService_Logout_FullMethodName,
 			grpc_health_v1.Health_Check_FullMethodName,
+		)),
+		googlegrpc.StreamInterceptor(grpc.StreamServerInterceptors(
+			log,
+			validator,
+			accessTokens,
 			grpc_health_v1.Health_Watch_FullMethodName,
 		)),
 	)

@@ -129,7 +129,7 @@ Rate limit CreateOrder зависит от роли: `user` < `trader` < `admin`
 go run ./orderserviceclient \
   --register \
   --email=user@example.com \
-  --password=password123 \
+  --password=Password1! \
   --market-id=BTC-USDT \
   --order-side=buy \
   --quantity=0.01

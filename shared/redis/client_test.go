@@ -28,14 +28,28 @@ func TestWithConnLifetimeOptionsOverrideDefaults(t *testing.T) {
 		t.Fatalf("ParseURL() error = %v", err)
 	}
 
-	WithConnMaxIdleTime(2 * time.Minute)(parsed)
-	WithConnMaxLifetime(time.Hour)(parsed)
-	applyConnLifetimeDefaults(parsed)
+	applyOptions(parsed, WithConnMaxIdleTime(2*time.Minute), WithConnMaxLifetime(time.Hour))
 
 	if parsed.ConnMaxIdleTime != 2*time.Minute {
 		t.Fatalf("ConnMaxIdleTime = %v, want 2m", parsed.ConnMaxIdleTime)
 	}
 	if parsed.ConnMaxLifetime != time.Hour {
 		t.Fatalf("ConnMaxLifetime = %v, want 1h", parsed.ConnMaxLifetime)
+	}
+}
+
+func TestWithConnLifetimeZeroMeansNoLimit(t *testing.T) {
+	parsed, err := goredis.ParseURL("redis://localhost:6379/0")
+	if err != nil {
+		t.Fatalf("ParseURL() error = %v", err)
+	}
+
+	applyOptions(parsed, WithConnMaxIdleTime(0), WithConnMaxLifetime(0))
+
+	if parsed.ConnMaxIdleTime != 0 {
+		t.Fatalf("ConnMaxIdleTime = %v, want 0 (no limit)", parsed.ConnMaxIdleTime)
+	}
+	if parsed.ConnMaxLifetime != 0 {
+		t.Fatalf("ConnMaxLifetime = %v, want 0 (no limit)", parsed.ConnMaxLifetime)
 	}
 }

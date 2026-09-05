@@ -12,8 +12,16 @@ type OrderRepository interface {
 	GetByIDAndUserID(ctx context.Context, id, userID string) (Order, error)
 	// ListByUserID возвращает страницу ордеров пользователя по курсору id.
 	// limit — максимальное число записей; afterID — exclusive cursor (пустой = с начала).
-	ListByUserID(ctx context.Context, userID string, limit int, afterID string) ([]Order, error)
+	// Пустой filter не сужает выборку.
+	ListByUserID(ctx context.Context, userID string, limit int, afterID string, filter ListOrdersFilter) ([]Order, error)
 	UpdateStatus(ctx context.Context, id string, status OrderStatus, updatedAt time.Time) error
+}
+
+// ListOrdersFilter — опциональные фильтры списка ордеров.
+// Пустой MarketID / Status означает «без ограничения по этому полю».
+type ListOrdersFilter struct {
+	MarketID string
+	Status   OrderStatus
 }
 
 // IdempotencyKeyStatus — жизненный цикл idempotency-ключа.

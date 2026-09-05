@@ -14,14 +14,22 @@ func toGRPCError(err error) error {
 }
 
 func marketToProto(market domain.Market) *commonv1.Market {
-	return &commonv1.Market{
-		Id:           market.ID,
-		Name:         market.Name,
-		BaseAsset:    market.BaseAsset,
-		QuoteAsset:   market.QuoteAsset,
-		Enabled:      market.Enabled,
-		AllowedRoles: rolesToProto(market.AllowedRoles),
+	msg := &commonv1.Market{
+		Id:                market.ID,
+		Name:              market.Name,
+		BaseAsset:         market.BaseAsset,
+		QuoteAsset:        market.QuoteAsset,
+		Enabled:           market.Enabled,
+		AllowedRoles:      rolesToProto(market.AllowedRoles),
+		QuantityPrecision: market.QuantityPrecision,
 	}
+	if market.MinOrderSize != "" {
+		msg.MinOrderSize = &commonv1.Decimal{Value: market.MinOrderSize}
+	}
+	if market.MinNotional != "" {
+		msg.MinNotional = &commonv1.Decimal{Value: market.MinNotional}
+	}
+	return msg
 }
 
 func marketsToProto(markets []domain.Market) []*commonv1.Market {

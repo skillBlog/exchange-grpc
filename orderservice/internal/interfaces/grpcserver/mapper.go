@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
-	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
+	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
+	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/shared/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -52,6 +52,25 @@ func orderStatusToProto(status domain.OrderStatus) commonv1.OrderStatus {
 		return commonv1.OrderStatus_ORDER_STATUS_CANCELLED
 	default:
 		return commonv1.OrderStatus_ORDER_STATUS_UNSPECIFIED
+	}
+}
+
+func orderStatusFromProto(status commonv1.OrderStatus) (domain.OrderStatus, error) {
+	switch status {
+	case commonv1.OrderStatus_ORDER_STATUS_UNSPECIFIED:
+		return "", nil
+	case commonv1.OrderStatus_ORDER_STATUS_CREATED:
+		return domain.OrderStatusCreated, nil
+	case commonv1.OrderStatus_ORDER_STATUS_FILLED:
+		return domain.OrderStatusFilled, nil
+	case commonv1.OrderStatus_ORDER_STATUS_REJECTED:
+		return domain.OrderStatusRejected, nil
+	case commonv1.OrderStatus_ORDER_STATUS_FAILED:
+		return domain.OrderStatusFailed, nil
+	case commonv1.OrderStatus_ORDER_STATUS_CANCELLED:
+		return domain.OrderStatusCancelled, nil
+	default:
+		return "", fmt.Errorf("%w: unsupported order status %v", domain.ErrInvalidArgument, status)
 	}
 }
 

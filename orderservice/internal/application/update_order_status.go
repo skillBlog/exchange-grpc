@@ -37,6 +37,7 @@ func NewUpdateOrderStatus(orders domain.OrderRepository, notifier OrderNotifier)
 func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatusInput) (err error) {
 	ctx, span := tracing.Start(ctx, "order.UpdateOrderStatus",
 		tracing.Attr("order.id", strings.TrimSpace(input.OrderID)),
+		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),
 	)
 	defer tracing.End(span, &err)
 
@@ -67,7 +68,13 @@ func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatu
 	}
 
 	if uc.notifier != nil {
-		uc.notifier.Publish(order.ID, input.Status, now)
+		uc.notifier.Publish(UpdateEvent{
+			OrderID:   order.ID,
+			UserID:    order.UserID,
+			MarketID:  order.MarketID,
+			Status:    input.Status,
+			UpdatedAt: now,
+		})
 	}
 	return nil
 }

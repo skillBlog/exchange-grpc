@@ -61,7 +61,7 @@ func (r *OrderRepository) GetByIDAndUserID(_ context.Context, orderID, userID st
 }
 
 // ListByUserID возвращает страницу ордеров пользователя по курсору id.
-func (r *OrderRepository) ListByUserID(_ context.Context, userID string, limit int, afterID string) ([]domain.Order, error) {
+func (r *OrderRepository) ListByUserID(_ context.Context, userID string, limit int, afterID string, filter domain.ListOrdersFilter) ([]domain.Order, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -75,6 +75,12 @@ func (r *OrderRepository) ListByUserID(_ context.Context, userID string, limit i
 			continue
 		}
 		if afterID != "" && strings.Compare(order.ID, afterID) <= 0 {
+			continue
+		}
+		if filter.MarketID != "" && order.MarketID != filter.MarketID {
+			continue
+		}
+		if filter.Status != "" && order.Status != filter.Status {
 			continue
 		}
 		result = append(result, order)

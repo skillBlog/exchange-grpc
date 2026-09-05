@@ -43,7 +43,7 @@ func TestStreamOrderUpdates_sendFailureUnsubscribesWithoutPanic(t *testing.T) {
 	}
 
 	// Повторная отписка через defer не должна паниковать; hub не должен держать подписчика.
-	orderHub.Publish(order.ID, domain.OrderStatusFilled, time.Now().UTC())
+	orderHub.Publish(application.UpdateEvent{OrderID: order.ID, Status: domain.OrderStatusFilled, UpdatedAt: time.Now().UTC()})
 }
 
 func TestStreamOrderUpdates_closesOnTerminalStatus(t *testing.T) {

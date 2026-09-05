@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/hub"
 	"github.com/exchange-grpc/shared/logger"
@@ -17,6 +18,10 @@ func TestUpdateHub_doubleUnsubscribeDoesNotPanic(t *testing.T) {
 	_, unsubscribe := orderHub.Subscribe("order-1")
 	unsubscribe()
 	unsubscribe()
+
+	_, unsubUser := orderHub.SubscribeUser("user-1")
+	unsubUser()
+	unsubUser()
 }
 
 func TestUpdateHub_publishTimeoutIsLogged(t *testing.T) {
@@ -27,8 +32,8 @@ func TestUpdateHub_publishTimeoutIsLogged(t *testing.T) {
 	defer unsubscribe()
 
 	now := time.Now().UTC()
-	orderHub.Publish("order-1", domain.OrderStatusCreated, now)
-	orderHub.Publish("order-1", domain.OrderStatusFilled, now)
+	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusCreated, UpdatedAt: now})
+	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusFilled, UpdatedAt: now})
 
 	if observed.Len() != 1 {
 		t.Fatalf("log entries = %d, want 1", observed.Len())
@@ -45,7 +50,7 @@ func TestUpdateHub_subscriberReceivesPublishedEvents(t *testing.T) {
 	updates, unsubscribe := orderHub.Subscribe("order-1")
 	defer unsubscribe()
 
-	orderHub.Publish("order-1", domain.OrderStatusFilled, time.Now().UTC())
+	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusFilled, UpdatedAt: time.Now().UTC()})
 
 	select {
 	case event := <-updates:
@@ -57,5 +62,63 @@ func TestUpdateHub_subscriberReceivesPublishedEvents(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for event")
+	}
+}
+
+func TestUpdateHub_userSubscriberReceivesEvents(t *testing.T) {
+	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
+
+	updates, unsubscribe := orderHub.SubscribeUser("user-1")
+	defer unsubscribe()
+	other, unsubOther := orderHub.SubscribeUser("user-2")
+	defer unsubOther()
+
+	orderHub.Publish(application.UpdateEvent{
+		OrderID:   "order-1",
+		UserID:    "user-1",
+		Status:    domain.OrderStatusCreated,
+		UpdatedAt: time.Now().UTC(),
+	})
+
+	select {
+	case event := <-updates:
+		if event.OrderID != "order-1" {
+			t.Fatalf("OrderID = %q", event.OrderID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for user event")
+	}
+
+	select {
+	case event := <-other:
+		t.Fatalf("other user received %+v", event)
+	default:
+	}
+}
+
+func TestUpdateHub_publishFansOutToOrderAndUser(t *testing.T) {
+	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
+
+	byOrder, unsubOrder := orderHub.Subscribe("order-1")
+	defer unsubOrder()
+	byUser, unsubUser := orderHub.SubscribeUser("user-1")
+	defer unsubUser()
+
+	orderHub.Publish(application.UpdateEvent{
+		OrderID:   "order-1",
+		UserID:    "user-1",
+		Status:    domain.OrderStatusFilled,
+		UpdatedAt: time.Now().UTC(),
+	})
+
+	for _, ch := range []<-chan application.UpdateEvent{byOrder, byUser} {
+		select {
+		case event := <-ch:
+			if event.Status != domain.OrderStatusFilled {
+				t.Fatalf("Status = %q", event.Status)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for fan-out event")
+		}
 	}
 }

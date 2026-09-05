@@ -12,20 +12,22 @@ import (
 // Server реализует order.v1.OrderService.
 type Server struct {
 	orderv1.UnimplementedOrderServiceServer
-	mapper             Mapper
-	createOrder        *application.CreateOrder
-	getOrderStatus     *application.GetOrderStatus
-	listOrders         *application.ListOrders
-	streamOrderUpdates *application.StreamOrderUpdates
+	mapper                 Mapper
+	createOrder            *application.CreateOrder
+	getOrderStatus         *application.GetOrderStatus
+	listOrders             *application.ListOrders
+	streamOrderUpdates     *application.StreamOrderUpdates
+	streamUserOrderUpdates *application.StreamUserOrderUpdates
 }
 
 // NewServer создаёт gRPC-сервер Order.
 func NewServer(services Services) *Server {
 	return &Server{
-		createOrder:        services.CreateOrder,
-		getOrderStatus:     services.GetOrderStatus,
-		listOrders:         services.ListOrders,
-		streamOrderUpdates: services.StreamOrderUpdates,
+		createOrder:            services.CreateOrder,
+		getOrderStatus:         services.GetOrderStatus,
+		listOrders:             services.ListOrders,
+		streamOrderUpdates:     services.StreamOrderUpdates,
+		streamUserOrderUpdates: services.StreamUserOrderUpdates,
 	}
 }
 
@@ -77,7 +79,12 @@ func (s *Server) ListOrders(ctx context.Context, req *orderv1.ListOrdersRequest)
 		return nil, grpc.ErrMissingUserID()
 	}
 
-	out, err := s.listOrders.Execute(ctx, s.mapper.ListOrdersRequestToInput(req, userID))
+	input, err := s.mapper.ListOrdersRequestToInput(req, userID)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	out, err := s.listOrders.Execute(ctx, input)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -95,6 +102,30 @@ func (s *Server) StreamOrderUpdates(req *orderv1.StreamOrderUpdatesRequest, stre
 		OrderID: normalizeOrderID(req.GetOrderId()),
 		UserID:  userID,
 	}, func(update application.UpdateEvent) error {
+		return stream.Send(orderUpdateToProto(update))
+	})
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return toGRPCError(err)
+}
+
+// StreamUserOrderUpdates передаёт обновления всех ордеров текущего пользователя.
+func (s *Server) StreamUserOrderUpdates(req *orderv1.StreamUserOrderUpdatesRequest, stream orderv1.OrderService_StreamUserOrderUpdatesServer) error {
+	userID, ok := grpc.UserIDFromContext(stream.Context())
+	if !ok {
+		return grpc.ErrMissingUserID()
+	}
+
+	input, err := s.mapper.StreamUserOrderUpdatesRequestToInput(req, userID)
+	if err != nil {
+		return toGRPCError(err)
+	}
+
+	err = s.streamUserOrderUpdates.Execute(stream.Context(), input, func(update application.UpdateEvent) error {
 		return stream.Send(orderUpdateToProto(update))
 	})
 	if err == nil {

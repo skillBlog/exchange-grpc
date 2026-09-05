@@ -111,10 +111,10 @@ func run(email, password string, register bool, marketID, orderSide, price, quan
 
 	orderConn, err := googlegrpc.NewClient(orderAddr,
 		googlegrpc.WithTransportCredentials(insecure.NewCredentials()),
-		googlegrpc.WithUnaryInterceptor(grpc.ChainUnaryClient(
+		googlegrpc.WithChainUnaryInterceptor(
 			grpc.UnaryClientRequestID,
 			grpc.UnaryClientForwardAuthorization,
-		)),
+		),
 	)
 	if err != nil {
 		return fmt.Errorf("dial order service: %w", err)

@@ -29,18 +29,18 @@ func TestLogin_success(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	}); err != nil {
 		t.Fatalf("register error = %v", err)
 	}
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
+	login := application.NewLogin(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
 	out, err := login.Execute(context.Background(), application.LoginInput{
 		Email:    "login@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -70,15 +70,15 @@ func TestLogin_invalidPassword(t *testing.T) {
 	}
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	}); err != nil {
 		t.Fatalf("register error = %v", err)
 	}
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
+	login := application.NewLogin(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, ratelimit.NewLoginLimiter(10, time.Minute), nil)
 	_, err = login.Execute(context.Background(), application.LoginInput{
 		Email:    "login@example.com",
 		Password: "wrong-password",
@@ -98,11 +98,11 @@ func TestLogin_rateLimited(t *testing.T) {
 	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 	limiter := ratelimit.NewLoginLimiter(1, time.Minute)
 
-	login := application.NewLogin(repo, bcrypt.NewHasher(), accessTokens, refreshTokens, limiter, nil)
+	login := application.NewLogin(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, limiter, nil)
 
 	_, err = login.Execute(context.Background(), application.LoginInput{
 		Email:    "missing@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatalf("first error = %v, want ErrUnauthorized", err)
@@ -110,7 +110,7 @@ func TestLogin_rateLimited(t *testing.T) {
 
 	_, err = login.Execute(context.Background(), application.LoginInput{
 		Email:    "missing@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	})
 	if !errors.Is(err, domain.ErrRateLimited) {
 		t.Fatalf("second error = %v, want ErrRateLimited", err)
@@ -121,7 +121,7 @@ func TestLogin_unknownUserIsLoggedWithoutPassword(t *testing.T) {
 	core, logs := observer.New(zapcore.WarnLevel)
 	login := newLoginForLogs(t, zap.New(core), memory.NewUserRepository())
 
-	const password = "password123"
+	const password = "Password1!"
 	_, err := login.Execute(context.Background(), application.LoginInput{
 		Email:      "missing@example.com",
 		Password:   password,
@@ -141,13 +141,13 @@ func TestLogin_badPasswordIsLoggedWithoutPassword(t *testing.T) {
 
 	register := application.NewRegister(
 		repo,
-		bcrypt.NewHasher(),
+		bcrypt.NewHasher(0),
 		mustAccessTokens(t),
 		tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
 	)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
-		Password: "password123",
+		Password: "Password1!",
 	}); err != nil {
 		t.Fatalf("register error = %v", err)
 	}
@@ -164,11 +164,47 @@ func TestLogin_badPasswordIsLoggedWithoutPassword(t *testing.T) {
 	assertFailedLoginLog(t, logs, "login@example.com", "bad-password", "", wrongPassword)
 }
 
+type countingHasher struct {
+	inner application.PasswordHasher
+	n     *int
+}
+
+func (h countingHasher) Hash(password string) (string, error) {
+	return h.inner.Hash(password)
+}
+
+func (h countingHasher) Compare(hash, password string) error {
+	*h.n++
+	return h.inner.Compare(hash, password)
+}
+
+func TestLogin_unknownUserStillComparesPassword(t *testing.T) {
+	var compares int
+	login := application.NewLogin(
+		memory.NewUserRepository(),
+		countingHasher{inner: bcrypt.NewHasher(0), n: &compares},
+		mustAccessTokens(t),
+		tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		ratelimit.NewLoginLimiter(10, time.Minute),
+		nil,
+	)
+	_, err := login.Execute(context.Background(), application.LoginInput{
+		Email:    "missing@example.com",
+		Password: "Password1!",
+	})
+	if !errors.Is(err, domain.ErrUnauthorized) {
+		t.Fatalf("error = %v, want ErrUnauthorized", err)
+	}
+	if compares != 1 {
+		t.Fatalf("Compare calls = %d, want 1", compares)
+	}
+}
+
 func newLoginForLogs(t *testing.T, log *zap.Logger, repo *memory.UserRepository) *application.Login {
 	t.Helper()
 	return application.NewLogin(
 		repo,
-		bcrypt.NewHasher(),
+		bcrypt.NewHasher(0),
 		mustAccessTokens(t),
 		tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
 		ratelimit.NewLoginLimiter(10, time.Minute),

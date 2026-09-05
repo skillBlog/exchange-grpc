@@ -83,14 +83,21 @@ func mustMarket(id, name, base, quote string, enabled bool, allowedRoles ...stri
 	return market
 }
 
+func withLimits(market domain.Market, minOrderSize string, quantityPrecision uint32, minNotional string) domain.Market {
+	market.MinOrderSize = minOrderSize
+	market.QuantityPrecision = quantityPrecision
+	market.MinNotional = minNotional
+	return market
+}
+
 // SeedMarkets возвращает набор рынков: активные и отключённые.
 func SeedMarkets() []domain.Market {
 	return []domain.Market{
-		mustMarket("BTC-USDT", "Bitcoin / Tether", "BTC", "USDT", true),
-		mustMarket("ETH-USDT", "Ethereum / Tether", "ETH", "USDT", true),
-		mustMarket("BNB-USDT", "BNB / Tether", "BNB", "USDT", true, "trader", "admin"),
-		mustMarket("SOL-USDT", "Solana / Tether", "SOL", "USDT", false),
-		mustMarket("XRP-USDT", "Ripple / Tether", "XRP", "USDT", false),
+		withLimits(mustMarket("BTC-USDT", "Bitcoin / Tether", "BTC", "USDT", true), "0.0001", 8, "10"),
+		withLimits(mustMarket("ETH-USDT", "Ethereum / Tether", "ETH", "USDT", true), "0.001", 8, "10"),
+		withLimits(mustMarket("BNB-USDT", "BNB / Tether", "BNB", "USDT", true, "trader", "admin"), "0.01", 6, "10"),
+		withLimits(mustMarket("SOL-USDT", "Solana / Tether", "SOL", "USDT", false), "0.01", 4, "10"),
+		withLimits(mustMarket("XRP-USDT", "Ripple / Tether", "XRP", "USDT", false), "1", 2, "10"),
 	}
 }
 

@@ -7,7 +7,7 @@ CLI для тестирования gRPC API биржи.
 ```bash
 make run-client
 # или
-go run . --register --email=user@example.com --password=password123 \
+go run . --register --email=user@example.com --password=Password1! \
   --market-id=BTC-USDT --order-side=buy --quantity=0.01
 ```
 

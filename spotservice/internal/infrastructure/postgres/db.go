@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/exchange-grpc/shared/tracing"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -14,7 +15,13 @@ type DB struct {
 
 // Connect открывает пул соединений с PostgreSQL.
 func Connect(ctx context.Context, databaseURL string) (*DB, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres url: %w", err)
+	}
+	cfg.ConnConfig.Tracer = tracing.NewPGXTracer()
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}

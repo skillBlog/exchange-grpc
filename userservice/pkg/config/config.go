@@ -19,6 +19,7 @@ const (
 	defaultRedisPoolSize    = 10
 	defaultRedisMaxRetries  = 3
 	defaultHealthCheckTimeout = 3 * time.Second
+	defaultBcryptCost         = 12
 )
 
 // Config содержит runtime-конфигурацию userservice.
@@ -36,6 +37,7 @@ type Config struct {
 	RedisMaxRetries     int
 	HealthCheckTimeout  time.Duration
 	LogLevelAddr        string
+	BcryptCost          int
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
@@ -54,6 +56,7 @@ func LoadConfig() Config {
 		RedisMaxRetries:    envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
 		HealthCheckTimeout: envDurationOrDefault("HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 		LogLevelAddr:       os.Getenv("LOG_LEVEL_ADDR"),
+		BcryptCost:         envIntOrDefault("BCRYPT_COST", defaultBcryptCost),
 	}
 }
 

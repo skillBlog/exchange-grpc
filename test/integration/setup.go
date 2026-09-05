@@ -9,6 +9,7 @@ import (
 	ordertestserver "github.com/exchange-grpc/orderservice/pkg/testserver"
 	spottestserver "github.com/exchange-grpc/spotservice/pkg/testserver"
 	"github.com/exchange-grpc/shared/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 var testTokenService = spottestserver.TestTokenService()
@@ -19,6 +20,7 @@ const TestUserID = "11111111-1111-1111-1111-111111111111"
 // Suite запускает Spot и Order gRPC-сервисы in-process для интеграционных тестов.
 type Suite struct {
 	SpotClient    spotv1.SpotServiceClient
+	HealthClient  grpc_health_v1.HealthClient
 	OrderClient   orderv1.OrderServiceClient
 	OrderServices ordertestserver.Services
 }
@@ -32,6 +34,7 @@ func NewSuite(t *testing.T) *Suite {
 
 	return &Suite{
 		SpotClient:    spot.Client,
+		HealthClient:  spot.HealthClient,
 		OrderClient:   order.Client,
 		OrderServices: order.Services,
 	}

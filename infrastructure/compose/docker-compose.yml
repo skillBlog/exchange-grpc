@@ -10,7 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - exchange-postgres-data:/var/lib/postgresql/data
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/02-spotservice.sql:ro
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/02-init-databases.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U exchange -d userservice"]
       interval: 5s
@@ -32,6 +32,40 @@ services:
     networks:
       - exchange
 
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: exchange-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    ports:
+      - "4317:4317"
+      - "3200:3200"
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+    networks:
+      - exchange
+
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: exchange-loki
+    ports:
+      - "3100:3100"
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    networks:
+      - exchange
+
+  promtail:
+    image: grafana/promtail:3.4.2
+    container_name: exchange-promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+    command: ["-config.file=/etc/promtail/config.yml"]
+    depends_on:
+      - loki
+    networks:
+      - exchange
+
   userservice:
     build:
       context: ../..
@@ -50,11 +84,15 @@ services:
       LOGIN_RATE_WINDOW: "1m"
       REDIS_URL: "redis://redis:6379/0"
       LOG_LEVEL: "info"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
+      OTEL_SERVICE_NAME: "userservice"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      tempo:
+        condition: service_started
     networks:
       - exchange
 
@@ -73,9 +111,13 @@ services:
       SPOT_MIGRATIONS_DIR: "/app/migrations"
       MARKET_CACHE_TTL: "30s"
       VIEW_MARKETS_RATE_LIMIT: "30"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
+      OTEL_SERVICE_NAME: "spotservice"
     depends_on:
       postgres:
         condition: service_healthy
+      tempo:
+        condition: service_started
     networks:
       - exchange
 
@@ -100,6 +142,8 @@ services:
       CREATE_ORDER_RATE_LIMIT_USER: "10"
       CREATE_ORDER_RATE_LIMIT_TRADER: "100"
       CREATE_ORDER_RATE_LIMIT_ADMIN: "1000"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
+      OTEL_SERVICE_NAME: "orderservice"
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,6 +152,8 @@ services:
       spotservice:
         condition: service_started
       userservice:
+        condition: service_started
+      tempo:
         condition: service_started
     networks:
       - exchange

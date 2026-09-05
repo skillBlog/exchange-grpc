@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	sharedgrpc "github.com/exchange-grpc/shared/grpc"
+	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/spotservice/internal/domain"
 	"go.uber.org/zap"
@@ -35,7 +36,10 @@ func NewGetMarket(markets domain.MarketRepository, log *zap.Logger) *GetMarket {
 // Execute возвращает рынок из хранилища, если роли пользователя его допускают.
 func (uc *GetMarket) Execute(ctx context.Context, input GetMarketInput) (market domain.Market, err error) {
 	marketID := strings.TrimSpace(input.MarketID)
-	ctx, span := tracing.Start(ctx, "spot.GetMarket", tracing.Attr("market.id", marketID))
+	ctx, span := tracing.Start(ctx, "spot.GetMarket",
+		tracing.Attr("market.id", marketID),
+		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),
+	)
 	defer tracing.End(span, &err)
 
 	if marketID == "" {
@@ -58,7 +62,7 @@ func (uc *GetMarket) Execute(ctx context.Context, input GetMarketInput) (market 
 	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
 		fields = append(fields, zap.String("request_id", requestID))
 	}
-	uc.log.Info("get market", fields...)
+	logger.WithTrace(ctx, uc.log).Info("get market", fields...)
 	return market, nil
 }
 
@@ -71,5 +75,5 @@ func (uc *GetMarket) logDenied(ctx context.Context, userID, marketID string) {
 	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
 		fields = append(fields, zap.String("request_id", requestID))
 	}
-	uc.log.Warn("get market denied", fields...)
+	logger.WithTrace(ctx, uc.log).Warn("get market denied", fields...)
 }

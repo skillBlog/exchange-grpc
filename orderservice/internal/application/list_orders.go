@@ -18,6 +18,8 @@ type ListOrdersInput struct {
 	UserID    string
 	PageToken string
 	PageSize  int32
+	MarketID  string
+	Status    domain.OrderStatus
 }
 
 // ListOrdersOutput — результат курсорной выборки ордеров.
@@ -39,7 +41,9 @@ func NewListOrders(orders domain.OrderRepository) *ListOrders {
 
 // Execute возвращает страницу ордеров пользователя.
 func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (out ListOrdersOutput, err error) {
-	ctx, span := tracing.Start(ctx, "order.ListOrders")
+	ctx, span := tracing.Start(ctx, "order.ListOrders",
+		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),
+	)
 	defer tracing.End(span, &err)
 
 	userID, err := domain.ParseUUID(input.UserID, "user_id")
@@ -64,7 +68,10 @@ func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (out L
 	}
 
 	// Запрашиваем pageSize+1, чтобы понять, есть ли следующая страница.
-	orders, err := uc.orders.ListByUserID(ctx, userID, int(pageSize)+1, pageToken)
+	orders, err := uc.orders.ListByUserID(ctx, userID, int(pageSize)+1, pageToken, domain.ListOrdersFilter{
+		MarketID: strings.TrimSpace(input.MarketID),
+		Status:   input.Status,
+	})
 	if err != nil {
 		return ListOrdersOutput{}, err
 	}

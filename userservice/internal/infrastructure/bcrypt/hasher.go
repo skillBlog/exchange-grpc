@@ -11,9 +11,12 @@ type Hasher struct {
 	cost int
 }
 
-// NewHasher создаёт bcrypt-hasher.
-func NewHasher() *Hasher {
-	return &Hasher{cost: defaultCost}
+// NewHasher создаёт bcrypt-hasher. cost вне [MinCost, MaxCost] заменяется на 12.
+func NewHasher(cost int) *Hasher {
+	if cost < bcrypt.MinCost || cost > bcrypt.MaxCost {
+		cost = defaultCost
+	}
+	return &Hasher{cost: cost}
 }
 
 // Hash возвращает bcrypt-хеш пароля.
@@ -28,4 +31,9 @@ func (h *Hasher) Hash(password string) (string, error) {
 // Compare сверяет пароль с хешем.
 func (h *Hasher) Compare(hash, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+}
+
+// Cost возвращает фактический bcrypt cost.
+func (h *Hasher) Cost() int {
+	return h.cost
 }

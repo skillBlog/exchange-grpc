@@ -83,7 +83,7 @@ func (r *OrderRepository) GetByIDAndUserID(ctx context.Context, orderID, userID 
 }
 
 // ListByUserID возвращает страницу ордеров пользователя по курсору id.
-func (r *OrderRepository) ListByUserID(ctx context.Context, userID string, limit int, afterID string) ([]domain.Order, error) {
+func (r *OrderRepository) ListByUserID(ctx context.Context, userID string, limit int, afterID string, filter domain.ListOrdersFilter) ([]domain.Order, error) {
 	if limit <= 0 {
 		return []domain.Order{}, nil
 	}
@@ -95,9 +95,11 @@ func (r *OrderRepository) ListByUserID(ctx context.Context, userID string, limit
 		FROM orders
 		WHERE user_id = $1
 			AND ($2 = '' OR id > $2::uuid)
+			AND ($4 = '' OR market_id = $4)
+			AND ($5 = '' OR status = $5)
 		ORDER BY id
 		LIMIT $3
-	`, userID, afterID, limit)
+	`, userID, afterID, limit, filter.MarketID, string(filter.Status))
 	if err != nil {
 		return nil, fmt.Errorf("list orders: %w", err)
 	}

@@ -24,3 +24,23 @@ func TestSetLevel_invalid(t *testing.T) {
 		t.Fatal("expected error for invalid level")
 	}
 }
+
+func TestServeLevelAdmin_emptyAddr(t *testing.T) {
+	srv := logger.ServeLevelAdmin("  ", zap.NewAtomicLevel(), logger.NewNop())
+	if srv != nil {
+		t.Fatal("expected nil server for empty addr")
+	}
+}
+
+func TestServeLevelAdmin_shutdown(t *testing.T) {
+	level := zap.NewAtomicLevelAt(zap.InfoLevel)
+	srv := logger.ServeLevelAdmin("127.0.0.1:0", level, logger.NewNop())
+	if srv == nil {
+		t.Fatal("expected http server")
+	}
+	logger.ShutdownLevelAdmin(srv, logger.NewNop())
+}
+
+func TestShutdownLevelAdmin_nil(t *testing.T) {
+	logger.ShutdownLevelAdmin(nil, logger.NewNop())
+}

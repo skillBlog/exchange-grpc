@@ -30,7 +30,7 @@ run-order-service:
 	go run ./orderservice
 
 run-client:
-	go run ./orderserviceclient --register --email=user@example.com --password=password123 --market-id=BTC-USDT --order-side=buy --quantity=0.01
+	go run ./orderserviceclient --register --email=user@example.com --password=Password1! --market-id=BTC-USDT --order-side=buy --quantity=0.01
 
 run-client-service: run-client
 

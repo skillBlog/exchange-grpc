@@ -109,6 +109,53 @@ func TestProtoValidate_wave1Contracts(t *testing.T) {
 			msg:     &spotv1.GetMarketRequest{MarketId: "eth-usdt"},
 			wantErr: true,
 		},
+		{name: "list orders empty filters valid", msg: &orderv1.ListOrdersRequest{}},
+		{
+			name: "list orders valid market filter",
+			msg:  &orderv1.ListOrdersRequest{MarketId: proto.String("BTC-USDT")},
+		},
+		{
+			name:    "list orders invalid market filter",
+			msg:     &orderv1.ListOrdersRequest{MarketId: proto.String("btc-usdt")},
+			wantErr: true,
+		},
+		{
+			name: "list orders valid status filter",
+			msg:  &orderv1.ListOrdersRequest{Status: commonv1.OrderStatus_ORDER_STATUS_CREATED.Enum()},
+		},
+		{
+			name: "market valid with limits",
+			msg: &commonv1.Market{
+				Id:                "BTC-USDT",
+				Name:              "Bitcoin",
+				BaseAsset:         "BTC",
+				QuoteAsset:        "USDT",
+				MinOrderSize:      &commonv1.Decimal{Value: "0.0001"},
+				QuantityPrecision: 8,
+				MinNotional:       &commonv1.Decimal{Value: "10"},
+			},
+		},
+		{
+			name: "market min_order_size zero rejected",
+			msg: &commonv1.Market{
+				Id:           "BTC-USDT",
+				Name:         "Bitcoin",
+				BaseAsset:    "BTC",
+				QuoteAsset:   "USDT",
+				MinOrderSize: &commonv1.Decimal{Value: "0"},
+			},
+			wantErr: true,
+		},
+		{name: "stream user updates empty valid", msg: &orderv1.StreamUserOrderUpdatesRequest{}},
+		{
+			name: "stream user updates valid market filter",
+			msg:  &orderv1.StreamUserOrderUpdatesRequest{MarketId: proto.String("BTC-USDT")},
+		},
+		{
+			name:    "stream user updates invalid market filter",
+			msg:     &orderv1.StreamUserOrderUpdatesRequest{MarketId: proto.String("btc-usdt")},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {

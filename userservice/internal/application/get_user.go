@@ -33,7 +33,7 @@ func NewGetUser(users domain.UserRepository) *GetUser {
 
 // Execute возвращает профиль по user_id из JWT.
 func (uc *GetUser) Execute(ctx context.Context, input GetUserInput) (out GetUserOutput, err error) {
-	ctx, span := tracing.Start(ctx, "user.GetUser")
+	ctx, span := tracing.Start(ctx, "user.GetUser", tracing.Attr("user_id", strings.TrimSpace(input.UserID)))
 	defer tracing.End(span, &err)
 
 	userID := strings.TrimSpace(input.UserID)

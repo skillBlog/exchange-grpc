@@ -13,6 +13,8 @@ import (
 	grpcserver "github.com/exchange-grpc/spotservice/internal/interfaces/grpcserver"
 	googlegrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -20,9 +22,10 @@ const bufSize = 1024 * 1024
 
 // Spot запускает spotservice in-process через bufconn.
 type Spot struct {
-	Client spotv1.SpotServiceClient
-	Conn   *googlegrpc.ClientConn
-	Server *googlegrpc.Server
+	Client       spotv1.SpotServiceClient
+	HealthClient grpc_health_v1.HealthClient
+	Conn         *googlegrpc.ClientConn
+	Server       *googlegrpc.Server
 }
 
 // NewSpot поднимает SpotService с JWT auth для интеграционных тестов.
@@ -34,13 +37,21 @@ func NewSpot(t *testing.T, tokens *sessionvalidation.TokenService) *Spot {
 		t.Fatalf("NewProtoValidator() error = %v", err)
 	}
 
-	unary := grpc.UnaryServerInterceptors(nil, validator, tokens)
+	unary := grpc.UnaryServerInterceptors(nil, validator, tokens, grpc_health_v1.Health_Check_FullMethodName)
+	stream := grpc.StreamServerInterceptors(nil, validator, tokens, grpc_health_v1.Health_Watch_FullMethodName)
 
 	listener := bufconn.Listen(bufSize)
 	repo := memory.NewSeededMarketRepository()
 	server := grpcserver.NewServerFromRepository(repo, nil, nil)
-	grpcServer := googlegrpc.NewServer(googlegrpc.UnaryInterceptor(unary))
+	grpcServer := googlegrpc.NewServer(
+		googlegrpc.UnaryInterceptor(unary),
+		googlegrpc.StreamInterceptor(stream),
+	)
 	spotv1.RegisterSpotServiceServer(grpcServer, server)
+
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	healthServer.SetServingStatus(spotv1.SpotService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
 
 	go func() {
 		_ = grpcServer.Serve(listener)
@@ -52,10 +63,10 @@ func NewSpot(t *testing.T, tokens *sessionvalidation.TokenService) *Spot {
 			return listener.Dial()
 		}),
 		googlegrpc.WithTransportCredentials(insecure.NewCredentials()),
-		googlegrpc.WithUnaryInterceptor(grpc.ChainUnaryClient(
+		googlegrpc.WithChainUnaryInterceptor(
 			grpc.UnaryClientRequestID,
 			grpc.UnaryClientForwardAuthorization,
-		)),
+		),
 	)
 	if err != nil {
 		t.Fatalf("spot grpc.NewClient() error = %v", err)
@@ -67,9 +78,10 @@ func NewSpot(t *testing.T, tokens *sessionvalidation.TokenService) *Spot {
 	})
 
 	return &Spot{
-		Client: spotv1.NewSpotServiceClient(conn),
-		Conn:   conn,
-		Server: grpcServer,
+		Client:       spotv1.NewSpotServiceClient(conn),
+		HealthClient: grpc_health_v1.NewHealthClient(conn),
+		Conn:         conn,
+		Server:       grpcServer,
 	}
 }
 
