@@ -2,10 +2,9 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
-	sharedgrpc "github.com/exchange-grpc/shared/grpc"
-	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/spotservice/internal/domain"
@@ -54,10 +53,8 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out
 	)
 	defer tracing.End(span, &err)
 
-	if uc.limiter != nil && input.UserID != "" {
-		if err = uc.limiter.Allow(ctx, input.UserID); err != nil {
-			return ViewMarketsOutput{}, err
-		}
+	if err = checkViewMarketsRateLimit(ctx, uc.limiter, input.UserID); err != nil {
+		return ViewMarketsOutput{}, fmt.Errorf("view markets rate limit: %w", err)
 	}
 
 	pageSize := input.PageSize
@@ -71,7 +68,7 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out
 	userRoles := roles.NormalizeStrings(input.UserRoles)
 	markets, err := uc.markets.ListActivePage(ctx, userRoles, int(pageSize)+1, strings.TrimSpace(input.PageToken))
 	if err != nil {
-		return ViewMarketsOutput{}, err
+		return ViewMarketsOutput{}, fmt.Errorf("list markets: %w", err)
 	}
 
 	hasMore := len(markets) > int(pageSize)
@@ -84,14 +81,7 @@ func (uc *ViewMarkets) Execute(ctx context.Context, input ViewMarketsInput) (out
 		nextPageToken = markets[len(markets)-1].ID
 	}
 
-	fields := []zap.Field{
-		zap.String("user_id", input.UserID),
-		zap.Int("count", len(markets)),
-	}
-	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
-		fields = append(fields, zap.String("request_id", requestID))
-	}
-	logger.WithTrace(ctx, uc.log).Info("view markets", fields...)
+	logAudit(ctx, uc.log, "view markets", input.UserID, zap.Int("count", len(markets)))
 
 	return ViewMarketsOutput{
 		Markets:       markets,

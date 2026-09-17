@@ -2,11 +2,13 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
+	"go.uber.org/zap"
 )
 
 // RefreshTokenInput — параметры обновления access token.
@@ -25,6 +27,7 @@ type RefreshToken struct {
 	users         domain.UserRepository
 	accessTokens  AccessTokenIssuer
 	refreshTokens RefreshTokenManager
+	log           *zap.Logger
 }
 
 // NewRefreshToken создаёт use case RefreshToken.
@@ -32,11 +35,16 @@ func NewRefreshToken(
 	users domain.UserRepository,
 	accessTokens AccessTokenIssuer,
 	refreshTokens RefreshTokenManager,
+	log *zap.Logger,
 ) *RefreshToken {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &RefreshToken{
 		users:         users,
 		accessTokens:  accessTokens,
 		refreshTokens: refreshTokens,
+		log:           log,
 	}
 }
 
@@ -52,14 +60,18 @@ func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (o
 
 	userID, err := uc.refreshTokens.Validate(ctx, oldRefresh)
 	if err != nil {
-		return RefreshTokenOutput{}, err
+		return RefreshTokenOutput{}, fmt.Errorf("validate refresh token: %w", err)
 	}
 
 	// Актуальные роли только из БД: opaque refresh хранит user_id, не claims.
 	user, err := uc.users.GetByID(ctx, userID)
 	if err != nil {
-		return RefreshTokenOutput{}, domain.ErrUnauthorized
+		if errors.Is(err, domain.ErrNotFound) {
+			return RefreshTokenOutput{}, fmt.Errorf("get user: %w", domain.ErrUnauthorized)
+		}
+		return RefreshTokenOutput{}, fmt.Errorf("get user: %w", err)
 	}
+	span.SetAttributes(tracing.Attr("user_id", user.ID))
 
 	accessToken, err := uc.accessTokens.Issue(user.ID, user.RoleStrings())
 	if err != nil {
@@ -70,6 +82,8 @@ func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (o
 	if err != nil {
 		return RefreshTokenOutput{}, fmt.Errorf("rotate refresh token: %w", err)
 	}
+
+	logAudit(ctx, uc.log, "refresh token rotated", user.ID)
 
 	return RefreshTokenOutput{
 		AccessToken:  accessToken,

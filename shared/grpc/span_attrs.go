@@ -16,8 +16,8 @@ func UnaryServerSpanAttrs() grpc.UnaryServerInterceptor {
 	}
 }
 
-// StreamServerSpanAttrs добавляет request_id на stream RPC-спан.
-// user_id появляется в контексте только после JWT RecvMsg — его ставят бизнес-спаны.
+// StreamServerSpanAttrs добавляет безопасные атрибуты на stream RPC-спан.
+// JWT ставит user_id в контекст до хендлера, поэтому атрибут доступен сразу.
 func StreamServerSpanAttrs() grpc.StreamServerInterceptor {
 	return func(srv any, stream grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		setSafeSpanAttrs(stream.Context())

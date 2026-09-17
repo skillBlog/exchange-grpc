@@ -28,7 +28,7 @@ func NewServer(viewMarkets *application.ViewMarkets, getMarket *application.GetM
 func (s *Server) ViewMarkets(ctx context.Context, req *spotv1.ViewMarketsRequest) (*spotv1.ViewMarketsResponse, error) {
 	userID, ok := grpc.UserIDFromContext(ctx)
 	if !ok {
-		return nil, grpc.ErrMissingUserID()
+		return nil, grpc.ErrMissingUserID
 	}
 	out, err := s.viewMarkets.Execute(ctx, s.mapper.ViewMarketsRequestToInput(req, userID, grpc.RolesFromContext(ctx)))
 	if err != nil {
@@ -41,7 +41,7 @@ func (s *Server) ViewMarkets(ctx context.Context, req *spotv1.ViewMarketsRequest
 func (s *Server) GetMarket(ctx context.Context, req *spotv1.GetMarketRequest) (*spotv1.GetMarketResponse, error) {
 	userID, ok := grpc.UserIDFromContext(ctx)
 	if !ok {
-		return nil, grpc.ErrMissingUserID()
+		return nil, grpc.ErrMissingUserID
 	}
 	market, err := s.getMarket.Execute(ctx, application.GetMarketInput{
 		MarketID:  req.GetMarketId(),

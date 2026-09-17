@@ -2,13 +2,23 @@ package application_test
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/exchange-grpc/spotservice/internal/application"
 	"github.com/exchange-grpc/spotservice/internal/domain"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/memory"
 )
+
+type stubViewMarketsLimiter struct {
+	err error
+}
+
+func (s stubViewMarketsLimiter) Allow(context.Context, string) error {
+	return s.err
+}
 
 func TestViewMarkets_returnsOnlyActiveMarkets(t *testing.T) {
 	repo := memory.NewSeededMarketRepository()
@@ -100,6 +110,22 @@ func TestViewMarkets_cursorPagination(t *testing.T) {
 	}
 	if len(second.Markets) != 1 {
 		t.Fatalf("second page size = %d, want 1", len(second.Markets))
+	}
+}
+
+func TestViewMarkets_wrapsRateLimit(t *testing.T) {
+	uc := application.NewViewMarkets(
+		memory.NewSeededMarketRepository(),
+		stubViewMarketsLimiter{err: domain.ErrRateLimited},
+		nil,
+	)
+
+	_, err := uc.Execute(context.Background(), application.ViewMarketsInput{UserID: "user-1"})
+	if !errors.Is(err, domain.ErrRateLimited) {
+		t.Fatalf("error = %v, want ErrRateLimited", err)
+	}
+	if !strings.Contains(err.Error(), "view markets rate limit") {
+		t.Fatalf("error = %v, want wrap prefix", err)
 	}
 }
 

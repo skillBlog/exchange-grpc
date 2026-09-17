@@ -13,7 +13,9 @@ import (
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/ratelimit"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/spotclient"
 	grpcserver "github.com/exchange-grpc/orderservice/internal/interfaces/grpcserver"
+	sharedapprunner "github.com/exchange-grpc/shared/apprunner"
 	"github.com/exchange-grpc/shared/grpc"
+	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	googlegrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -98,7 +100,7 @@ func NewOrder(t *testing.T, spotConn *googlegrpc.ClientConn, tokens *sessionvali
 
 	t.Cleanup(func() {
 		conn.Close()
-		grpcServer.Stop()
+		sharedapprunner.GracefulStop(grpcServer, 2*time.Second, logger.NewNop())
 	})
 
 	return &Order{

@@ -26,5 +26,5 @@ type OrderNotifier interface {
 type OrderUpdateHub interface {
 	OrderNotifier
 	Subscribe(orderID string) (<-chan UpdateEvent, func())
-	SubscribeUser(userID string) (<-chan UpdateEvent, func())
+	SubscribeUser(userID string, filter UserStreamFilter) (<-chan UpdateEvent, func())
 }

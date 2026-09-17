@@ -57,6 +57,10 @@ func NewRedisCreateOrderLimiter(client *redis.Client, cfg application.CreateOrde
 
 // Allow проверяет глобальный и per-user лимиты.
 func (l *RedisCreateOrderLimiter) Allow(ctx context.Context, userID string, userRoles []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	ok, err := l.allowKey(ctx, l.prefix+":global", l.cfg.GlobalLimit, l.cfg.GlobalWindow)
 	if err != nil {
 		return fmt.Errorf("check global rate limit: %w", err)

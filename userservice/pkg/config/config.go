@@ -20,6 +20,7 @@ const (
 	defaultRedisMaxRetries  = 3
 	defaultHealthCheckTimeout = 3 * time.Second
 	defaultBcryptCost         = 12
+	defaultMetricsAddr        = ":2112"
 )
 
 // Config содержит runtime-конфигурацию userservice.
@@ -37,6 +38,7 @@ type Config struct {
 	RedisMaxRetries     int
 	HealthCheckTimeout  time.Duration
 	LogLevelAddr        string
+	MetricsAddr         string
 	BcryptCost          int
 }
 
@@ -56,6 +58,7 @@ func LoadConfig() Config {
 		RedisMaxRetries:    envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
 		HealthCheckTimeout: envDurationOrDefault("HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 		LogLevelAddr:       os.Getenv("LOG_LEVEL_ADDR"),
+		MetricsAddr:        envOrDefault("METRICS_ADDR", defaultMetricsAddr),
 		BcryptCost:         envIntOrDefault("BCRYPT_COST", defaultBcryptCost),
 	}
 }

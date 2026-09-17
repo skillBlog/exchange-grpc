@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	sharedgrpc "github.com/exchange-grpc/shared/grpc"
-	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
 	"go.uber.org/zap"
@@ -84,25 +83,23 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 		return LoginOutput{}, fmt.Errorf("%w: password is required", domain.ErrInvalidArgument)
 	}
 
-	if uc.limiter != nil {
-		if err = uc.limiter.Allow(ctx, email); err != nil {
-			return LoginOutput{}, err
-		}
+	if err = checkLoginRateLimit(ctx, uc.limiter, email); err != nil {
+		return LoginOutput{}, fmt.Errorf("login rate limit: %w", err)
 	}
 
 	user, err := uc.users.GetByEmail(ctx, email)
 	if err != nil {
+		uc.compareDummy(ctx, password)
 		if errors.Is(err, domain.ErrUnauthorized) || errors.Is(err, domain.ErrNotFound) {
-			uc.compareDummy(password)
 			uc.logFailedLogin(ctx, email, input.ClientAddr, loginFailReasonUserNotFound)
 			return LoginOutput{}, domain.ErrUnauthorized
 		}
-		return LoginOutput{}, err
+		return LoginOutput{}, fmt.Errorf("get user: %w", err)
 	}
 
 	span.SetAttributes(tracing.Attr("user_id", user.ID))
 
-	if err = uc.hasher.Compare(user.PasswordHash, password); err != nil {
+	if err = comparePassword(ctx, uc.hasher, user.PasswordHash, password); err != nil {
 		uc.logFailedLogin(ctx, email, input.ClientAddr, loginFailReasonBadPassword)
 		return LoginOutput{}, domain.ErrUnauthorized
 	}
@@ -117,23 +114,29 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 		return LoginOutput{}, fmt.Errorf("issue refresh token: %w", err)
 	}
 
+	var extra []zap.Field
+	if input.ClientAddr != "" {
+		extra = append(extra, zap.String("client_addr", input.ClientAddr))
+	}
+	logAudit(ctx, uc.log, "user logged in", user.ID, extra...)
+
 	return LoginOutput{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
 }
 
-func (uc *Login) compareDummy(password string) {
-	hash := uc.dummyPasswordHash()
+func (uc *Login) compareDummy(ctx context.Context, password string) {
+	hash := uc.dummyPasswordHash(ctx)
 	if hash == "" {
 		return
 	}
-	_ = uc.hasher.Compare(hash, password)
+	_ = comparePassword(ctx, uc.hasher, hash, password)
 }
 
-func (uc *Login) dummyPasswordHash() string {
+func (uc *Login) dummyPasswordHash(ctx context.Context) string {
 	dummyHashOnce.Do(func() {
-		hash, err := uc.hasher.Hash(timingDummyPassword)
+		hash, err := hashPassword(ctx, uc.hasher, timingDummyPassword)
 		if err != nil {
 			return
 		}
@@ -144,14 +147,11 @@ func (uc *Login) dummyPasswordHash() string {
 
 func (uc *Login) logFailedLogin(ctx context.Context, email, clientAddr, reason string) {
 	fields := []zap.Field{
-		zap.String("email", email),
+		zap.String("email_hash", hashEmail(email)),
 		zap.String("reason", reason),
-	}
-	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
-		fields = append(fields, zap.String("request_id", requestID))
 	}
 	if clientAddr != "" {
 		fields = append(fields, zap.String("client_addr", clientAddr))
 	}
-	logger.WithTrace(ctx, uc.log).Warn("login failed", fields...)
+	sharedgrpc.LogWarn(ctx, uc.log, "login failed", "", fields...)
 }

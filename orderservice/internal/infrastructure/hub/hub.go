@@ -14,11 +14,13 @@ const (
 	defaultPublishTimeout   = 100 * time.Millisecond
 )
 
+type subscriberSet map[chan application.UpdateEvent]application.UserStreamFilter
+
 // UpdateHub — in-memory реализация рассылки обновлений ордеров.
 type UpdateHub struct {
 	mu               sync.RWMutex
-	subscribers      map[string]map[chan application.UpdateEvent]struct{}
-	userSubscribers  map[string]map[chan application.UpdateEvent]struct{}
+	subscribers      map[string]subscriberSet
+	userSubscribers  map[string]subscriberSet
 	subscriberBuffer int
 	publishTimeout   time.Duration
 	log              *zap.Logger
@@ -37,8 +39,8 @@ func NewUpdateHub(subscriberBuffer int, log *zap.Logger, publishTimeout time.Dur
 		log = logger.NewNop()
 	}
 	return &UpdateHub{
-		subscribers:      make(map[string]map[chan application.UpdateEvent]struct{}),
-		userSubscribers:  make(map[string]map[chan application.UpdateEvent]struct{}),
+		subscribers:      make(map[string]subscriberSet),
+		userSubscribers:  make(map[string]subscriberSet),
 		subscriberBuffer: subscriberBuffer,
 		publishTimeout:   publishTimeout,
 		log:              log,
@@ -58,7 +60,10 @@ func (h *UpdateHub) Publish(event application.UpdateEvent) {
 		chans = append(chans, ch)
 	}
 	if event.UserID != "" {
-		for ch := range h.userSubscribers[event.UserID] {
+		for ch, filter := range h.userSubscribers[event.UserID] {
+			if !filter.Matches(event) {
+				continue
+			}
 			chans = append(chans, ch)
 		}
 	}
@@ -97,23 +102,24 @@ func (h *UpdateHub) publishOne(ch chan application.UpdateEvent, event applicatio
 
 // Subscribe регистрирует слушателя для конкретного ордера.
 func (h *UpdateHub) Subscribe(orderID string) (<-chan application.UpdateEvent, func()) {
-	return h.subscribe(h.subscribers, orderID)
+	return h.subscribe(h.subscribers, orderID, application.UserStreamFilter{})
 }
 
-// SubscribeUser регистрирует слушателя для всех ордеров пользователя.
-func (h *UpdateHub) SubscribeUser(userID string) (<-chan application.UpdateEvent, func()) {
-	return h.subscribe(h.userSubscribers, userID)
+// SubscribeUser регистрирует слушателя ордеров пользователя с опциональным фильтром.
+func (h *UpdateHub) SubscribeUser(userID string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, func()) {
+	return h.subscribe(h.userSubscribers, userID, filter)
 }
 
-// unsubscribe безопасен при повторных вызовах благодаря sync.Once.
-func (h *UpdateHub) subscribe(store map[string]map[chan application.UpdateEvent]struct{}, key string) (<-chan application.UpdateEvent, func()) {
+// unsubscribe удаляет подписчика из карты и не закрывает канал:
+// Publish мог скопировать ch, а send в закрытый канал паникует.
+func (h *UpdateHub) subscribe(store map[string]subscriberSet, key string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, func()) {
 	ch := make(chan application.UpdateEvent, h.subscriberBuffer)
 
 	h.mu.Lock()
 	if store[key] == nil {
-		store[key] = make(map[chan application.UpdateEvent]struct{})
+		store[key] = make(subscriberSet)
 	}
-	store[key][ch] = struct{}{}
+	store[key][ch] = filter
 	h.mu.Unlock()
 
 	var once sync.Once
@@ -126,7 +132,6 @@ func (h *UpdateHub) subscribe(store map[string]map[chan application.UpdateEvent]
 			if len(store[key]) == 0 {
 				delete(store, key)
 			}
-			close(ch)
 		})
 	}
 

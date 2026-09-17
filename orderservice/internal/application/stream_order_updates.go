@@ -45,11 +45,11 @@ func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpda
 
 	order, err := uc.orders.GetByIDAndUserID(ctx, orderID, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get order: %w", err)
 	}
 
 	if err = send(UpdateEvent{OrderID: order.ID, Status: order.Status, UpdatedAt: order.UpdatedAt}); err != nil {
-		return err
+		return fmt.Errorf("send order update: %w", err)
 	}
 	if order.Status.IsTerminal() {
 		return nil
@@ -71,7 +71,7 @@ func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpda
 				return nil
 			}
 			if err = send(update); err != nil {
-				return err
+				return fmt.Errorf("send order update: %w", err)
 			}
 			if update.Status.IsTerminal() {
 				return nil

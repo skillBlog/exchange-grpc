@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -41,5 +42,9 @@ func (uc *GetOrderStatus) Execute(ctx context.Context, input GetOrderStatusInput
 		return domain.Order{}, err
 	}
 
-	return uc.orders.GetByIDAndUserID(ctx, orderID, userID)
+	order, err = uc.orders.GetByIDAndUserID(ctx, orderID, userID)
+	if err != nil {
+		return domain.Order{}, fmt.Errorf("get order: %w", err)
+	}
+	return order, nil
 }

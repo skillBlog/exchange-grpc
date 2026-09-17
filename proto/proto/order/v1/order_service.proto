@@ -36,7 +36,11 @@ message CreateOrderRequest {
   // Опционально: пустое значение пропускает правила (IGNORE_IF_ZERO_VALUE).
   string idempotency_key = 5 [
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
-    (buf.validate.field).string = {min_len: 1, max_len: 128}
+    (buf.validate.field).string = {
+      min_len: 1,
+      max_len: 128,
+      pattern: "^[A-Za-z0-9_-]+$"
+    }
   ];
 }
 

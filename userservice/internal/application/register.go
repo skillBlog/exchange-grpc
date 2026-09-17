@@ -9,6 +9,7 @@ import (
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // RegisterInput — параметры регистрации пользователя.
@@ -30,6 +31,7 @@ type Register struct {
 	hasher        PasswordHasher
 	accessTokens  AccessTokenIssuer
 	refreshTokens RefreshTokenManager
+	log           *zap.Logger
 }
 
 // NewRegister создаёт use case Register.
@@ -38,12 +40,17 @@ func NewRegister(
 	hasher PasswordHasher,
 	accessTokens AccessTokenIssuer,
 	refreshTokens RefreshTokenManager,
+	log *zap.Logger,
 ) *Register {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &Register{
 		users:         users,
 		hasher:        hasher,
 		accessTokens:  accessTokens,
 		refreshTokens: refreshTokens,
+		log:           log,
 	}
 }
 
@@ -61,7 +68,7 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 		return RegisterOutput{}, err
 	}
 
-	hash, err := uc.hasher.Hash(password)
+	hash, err := hashPassword(ctx, uc.hasher, password)
 	if err != nil {
 		return RegisterOutput{}, fmt.Errorf("hash password: %w", err)
 	}
@@ -72,7 +79,7 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 	}
 
 	if err = uc.users.Save(ctx, user); err != nil {
-		return RegisterOutput{}, err
+		return RegisterOutput{}, fmt.Errorf("save user: %w", err)
 	}
 	span.SetAttributes(tracing.Attr("user_id", user.ID))
 
@@ -85,6 +92,8 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 	if err != nil {
 		return RegisterOutput{}, fmt.Errorf("issue refresh token: %w", err)
 	}
+
+	logAudit(ctx, uc.log, "user registered", user.ID)
 
 	return RegisterOutput{
 		UserID:       user.ID,

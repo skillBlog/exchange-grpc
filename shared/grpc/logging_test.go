@@ -22,27 +22,27 @@ func TestUnaryServerLogging_errorLevels(t *testing.T) {
 		msg   string
 	}{
 		{
-			name:  "invalid argument is debug",
+			name:  "invalid argument is warn",
 			err:   status.Error(codes.InvalidArgument, "bad request"),
-			level: zapcore.DebugLevel,
+			level: zapcore.WarnLevel,
 			msg:   "grpc request failed",
 		},
 		{
-			name:  "not found is debug",
+			name:  "not found is warn",
 			err:   status.Error(codes.NotFound, "missing"),
-			level: zapcore.DebugLevel,
+			level: zapcore.WarnLevel,
 			msg:   "grpc request failed",
 		},
 		{
-			name:  "permission denied is debug",
+			name:  "permission denied is warn",
 			err:   status.Error(codes.PermissionDenied, "no access"),
-			level: zapcore.DebugLevel,
+			level: zapcore.WarnLevel,
 			msg:   "grpc request failed",
 		},
 		{
-			name:  "unauthenticated is debug",
+			name:  "unauthenticated is warn",
 			err:   status.Error(codes.Unauthenticated, "no token"),
-			level: zapcore.DebugLevel,
+			level: zapcore.WarnLevel,
 			msg:   "grpc request failed",
 		},
 		{
@@ -116,9 +116,9 @@ func TestStreamServerLogging_errorLevels(t *testing.T) {
 		msg   string
 	}{
 		{
-			name:  "not found is debug",
+			name:  "not found is warn",
 			err:   status.Error(codes.NotFound, "missing"),
-			level: zapcore.DebugLevel,
+			level: zapcore.WarnLevel,
 			msg:   "grpc stream failed",
 		},
 		{

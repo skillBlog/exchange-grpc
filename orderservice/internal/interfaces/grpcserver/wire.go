@@ -38,6 +38,6 @@ func NewServices(
 		ListOrders:             application.NewListOrders(orders),
 		StreamOrderUpdates:     application.NewStreamOrderUpdates(orders, orderHub),
 		StreamUserOrderUpdates: application.NewStreamUserOrderUpdates(orderHub),
-		UpdateOrderStatus:      application.NewUpdateOrderStatus(orders, orderHub),
+		UpdateOrderStatus:      application.NewUpdateOrderStatus(orders, orderHub, log),
 	}
 }

@@ -4,18 +4,9 @@ import (
 	"errors"
 
 	sharederrors "github.com/exchange-grpc/shared/errors"
+	"github.com/exchange-grpc/shared/sessionvalidation"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-)
-
-// Re-export общих sentinel-ошибок для обратной совместимости.
-var (
-	ErrInvalidArgument    = sharederrors.ErrInvalidArgument
-	ErrNotFound           = sharederrors.ErrNotFound
-	ErrForbidden          = sharederrors.ErrForbidden
-	ErrUnauthorized       = sharederrors.ErrUnauthorized
-	ErrAlreadyExists      = sharederrors.ErrAlreadyExists
-	ErrFailedPrecondition = sharederrors.ErrFailedPrecondition
 )
 
 // ErrorMapping описывает соответствие domain-ошибки gRPC status code.
@@ -25,39 +16,54 @@ type ErrorMapping struct {
 	Message  string
 }
 
+func defaultErrorMappings(rateLimitedMessage string) []ErrorMapping {
+	if rateLimitedMessage == "" {
+		rateLimitedMessage = sharederrors.ErrRateLimited.Error()
+	}
+	return []ErrorMapping{
+		{Sentinel: sharederrors.ErrInvalidArgument, Code: codes.InvalidArgument},
+		{Sentinel: sharederrors.ErrNotFound, Code: codes.NotFound},
+		{Sentinel: sharederrors.ErrForbidden, Code: codes.PermissionDenied},
+		{Sentinel: sharederrors.ErrUnauthorized, Code: codes.Unauthenticated},
+		{Sentinel: sessionvalidation.ErrInvalidToken, Code: codes.Unauthenticated},
+		{Sentinel: sharederrors.ErrAlreadyExists, Code: codes.AlreadyExists},
+		{Sentinel: sharederrors.ErrFailedPrecondition, Code: codes.FailedPrecondition},
+		{Sentinel: sharederrors.ErrRateLimited, Code: codes.ResourceExhausted, Message: rateLimitedMessage},
+	}
+}
+
 // StatusFromError преобразует ошибку в gRPC status.
-// extra позволяет сервисам добавить свои domain sentinel-ошибки поверх общих.
+// extra позволяет сервисам переопределить общие маппинги или добавить свои sentinel-ошибки.
 func StatusFromError(err error, extra ...ErrorMapping) error {
+	return mapStatus(err, extra, defaultErrorMappings(""))
+}
+
+// ToStatusError преобразует domain-ошибку в gRPC status с общим маппингом.
+// extra проверяется раньше defaults, поэтому сервисы могут задать свой message/code.
+func ToStatusError(err error, rateLimitedMessage string, extra ...ErrorMapping) error {
+	return mapStatus(err, extra, defaultErrorMappings(rateLimitedMessage))
+}
+
+func mapStatus(err error, extra, defaults []ErrorMapping) error {
 	if err == nil {
 		return nil
 	}
-
 	for _, mapping := range extra {
 		if errors.Is(err, mapping.Sentinel) {
-			message := mapping.Message
-			if message == "" {
-				message = mapping.Sentinel.Error()
-			}
-			return status.Error(mapping.Code, message)
+			return status.Error(mapping.Code, mappingMessage(err, mapping))
 		}
 	}
-
-	switch {
-	case errors.Is(err, sharederrors.ErrInvalidArgument):
-		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, sharederrors.ErrNotFound):
-		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, sharederrors.ErrForbidden):
-		return status.Error(codes.PermissionDenied, err.Error())
-	case errors.Is(err, sharederrors.ErrUnauthorized):
-		return status.Error(codes.Unauthenticated, err.Error())
-	case errors.Is(err, sharederrors.ErrAlreadyExists):
-		return status.Error(codes.AlreadyExists, err.Error())
-	case errors.Is(err, sharederrors.ErrFailedPrecondition):
-		return status.Error(codes.FailedPrecondition, err.Error())
-	case errors.Is(err, sharederrors.ErrRateLimited):
-		return status.Error(codes.ResourceExhausted, err.Error())
-	default:
-		return status.Error(codes.Internal, "internal error")
+	for _, mapping := range defaults {
+		if errors.Is(err, mapping.Sentinel) {
+			return status.Error(mapping.Code, mappingMessage(err, mapping))
+		}
 	}
+	return status.Error(codes.Internal, "internal error")
+}
+
+func mappingMessage(err error, mapping ErrorMapping) string {
+	if mapping.Message != "" {
+		return mapping.Message
+	}
+	return err.Error()
 }

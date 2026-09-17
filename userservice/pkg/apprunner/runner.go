@@ -15,6 +15,7 @@ import (
 	"github.com/exchange-grpc/shared/grpc"
 	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/logger"
+	sharedmetrics "github.com/exchange-grpc/shared/metrics"
 	sharedredis "github.com/exchange-grpc/shared/redis"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/shared/tracing"
@@ -22,7 +23,6 @@ import (
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/postgres"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/ratelimit"
-	"github.com/exchange-grpc/userservice/internal/infrastructure/tokens"
 	grpcserver "github.com/exchange-grpc/userservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/userservice/pkg/config"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -51,6 +51,8 @@ func (r *AppRunner) Run() {
 	defer func() { _ = log.Sync() }()
 	admin := logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
 	defer logger.ShutdownLevelAdmin(admin, log)
+	metricsSrv := sharedmetrics.Serve(r.cfg.MetricsAddr, log)
+	defer sharedmetrics.Shutdown(metricsSrv, log)
 
 	if err := r.run(log); err != nil {
 		log.Fatal("userservice failed", zap.Error(err))
@@ -95,7 +97,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	userRepo := postgres.NewUserRepository(db)
 	refreshRepo := postgres.NewRefreshTokenRepository(db)
 	hasher := bcrypt.NewHasher(r.cfg.BcryptCost)
-	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, r.cfg.RefreshTokenTTL)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(refreshRepo, r.cfg.RefreshTokenTTL)
 
 	var loginLimiter application.LoginRateLimiter
 	var redisClient *sharedredis.Client
@@ -117,11 +119,11 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		log.Info("login rate limiter uses redis", zap.String("redis_url", r.cfg.RedisURL))
 	}
 
-	registerUC := application.NewRegister(userRepo, hasher, accessTokens, refreshTokens)
+	registerUC := application.NewRegister(userRepo, hasher, accessTokens, refreshTokens, log)
 	loginUC := application.NewLogin(userRepo, hasher, accessTokens, refreshTokens, loginLimiter, log)
-	refreshUC := application.NewRefreshToken(userRepo, accessTokens, refreshTokens)
+	refreshUC := application.NewRefreshToken(userRepo, accessTokens, refreshTokens, log)
 	getUserUC := application.NewGetUser(userRepo)
-	logoutUC := application.NewLogout(refreshTokens)
+	logoutUC := application.NewLogout(refreshTokens, log)
 	server := grpcserver.NewServer(registerUC, loginUC, refreshUC, getUserUC, logoutUC)
 
 	grpcServer := googlegrpc.NewServer(
@@ -147,7 +149,6 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus(userv1.UserService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
 
 	listener, err := net.Listen("tcp", r.cfg.GRPCAddr)
 	if err != nil {
@@ -168,6 +169,10 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		criticalChecks,
 		optionalChecks...,
 	)
+	if err := healthWatcher.Check(runCtx); err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("initial health check: %w", err)
+	}
 	go healthWatcher.Run(runCtx)
 
 	return sharedapprunner.ServeUntilSignal(

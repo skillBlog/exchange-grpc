@@ -35,7 +35,7 @@ func NewServer(services Services) *Server {
 func (s *Server) CreateOrder(ctx context.Context, req *orderv1.CreateOrderRequest) (*orderv1.CreateOrderResponse, error) {
 	userID, ok := grpc.UserIDFromContext(ctx)
 	if !ok {
-		return nil, grpc.ErrMissingUserID()
+		return nil, grpc.ErrMissingUserID
 	}
 
 	input, err := s.mapper.CreateOrderRequestToInput(req, userID, grpc.RolesFromContext(ctx))
@@ -58,7 +58,7 @@ func (s *Server) CreateOrder(ctx context.Context, req *orderv1.CreateOrderReques
 func (s *Server) GetOrderStatus(ctx context.Context, req *orderv1.GetOrderStatusRequest) (*orderv1.GetOrderStatusResponse, error) {
 	userID, ok := grpc.UserIDFromContext(ctx)
 	if !ok {
-		return nil, grpc.ErrMissingUserID()
+		return nil, grpc.ErrMissingUserID
 	}
 
 	order, err := s.getOrderStatus.Execute(ctx, application.GetOrderStatusInput{
@@ -76,7 +76,7 @@ func (s *Server) GetOrderStatus(ctx context.Context, req *orderv1.GetOrderStatus
 func (s *Server) ListOrders(ctx context.Context, req *orderv1.ListOrdersRequest) (*orderv1.ListOrdersResponse, error) {
 	userID, ok := grpc.UserIDFromContext(ctx)
 	if !ok {
-		return nil, grpc.ErrMissingUserID()
+		return nil, grpc.ErrMissingUserID
 	}
 
 	input, err := s.mapper.ListOrdersRequestToInput(req, userID)
@@ -95,7 +95,7 @@ func (s *Server) ListOrders(ctx context.Context, req *orderv1.ListOrdersRequest)
 func (s *Server) StreamOrderUpdates(req *orderv1.StreamOrderUpdatesRequest, stream orderv1.OrderService_StreamOrderUpdatesServer) error {
 	userID, ok := grpc.UserIDFromContext(stream.Context())
 	if !ok {
-		return grpc.ErrMissingUserID()
+		return grpc.ErrMissingUserID
 	}
 
 	err := s.streamOrderUpdates.Execute(stream.Context(), application.StreamOrderUpdatesInput{
@@ -117,7 +117,7 @@ func (s *Server) StreamOrderUpdates(req *orderv1.StreamOrderUpdatesRequest, stre
 func (s *Server) StreamUserOrderUpdates(req *orderv1.StreamUserOrderUpdatesRequest, stream orderv1.OrderService_StreamUserOrderUpdatesServer) error {
 	userID, ok := grpc.UserIDFromContext(stream.Context())
 	if !ok {
-		return grpc.ErrMissingUserID()
+		return grpc.ErrMissingUserID
 	}
 
 	input, err := s.mapper.StreamUserOrderUpdatesRequestToInput(req, userID)

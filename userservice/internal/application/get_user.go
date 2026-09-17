@@ -43,7 +43,7 @@ func (uc *GetUser) Execute(ctx context.Context, input GetUserInput) (out GetUser
 
 	user, err := uc.users.GetByID(ctx, userID)
 	if err != nil {
-		return GetUserOutput{}, err
+		return GetUserOutput{}, fmt.Errorf("get user: %w", err)
 	}
 
 	return GetUserOutput{

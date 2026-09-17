@@ -36,7 +36,11 @@ func NewViewMarketsLimiter(maxAttempts int, window time.Duration) *ViewMarketsLi
 }
 
 // Allow возвращает ошибку, если лимит исчерпан.
-func (l *ViewMarketsLimiter) Allow(_ context.Context, userID string) error {
+func (l *ViewMarketsLimiter) Allow(ctx context.Context, userID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

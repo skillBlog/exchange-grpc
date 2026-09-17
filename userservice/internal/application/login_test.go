@@ -2,6 +2,8 @@ package application_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,7 +16,6 @@ import (
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/memory"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/ratelimit"
-	"github.com/exchange-grpc/userservice/internal/infrastructure/tokens"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -27,9 +28,9 @@ func TestLogin_success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, nil)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
 		Password: "Password1!",
@@ -68,9 +69,9 @@ func TestLogin_invalidPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, nil)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
 		Password: "Password1!",
@@ -95,7 +96,7 @@ func TestLogin_rateLimited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 	limiter := ratelimit.NewLoginLimiter(1, time.Minute)
 
 	login := application.NewLogin(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, limiter, nil)
@@ -143,7 +144,8 @@ func TestLogin_badPasswordIsLoggedWithoutPassword(t *testing.T) {
 		repo,
 		bcrypt.NewHasher(0),
 		mustAccessTokens(t),
-		tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		nil,
 	)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "login@example.com",
@@ -184,7 +186,7 @@ func TestLogin_unknownUserStillComparesPassword(t *testing.T) {
 		memory.NewUserRepository(),
 		countingHasher{inner: bcrypt.NewHasher(0), n: &compares},
 		mustAccessTokens(t),
-		tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
 		ratelimit.NewLoginLimiter(10, time.Minute),
 		nil,
 	)
@@ -200,13 +202,49 @@ func TestLogin_unknownUserStillComparesPassword(t *testing.T) {
 	}
 }
 
+func TestLogin_repoErrorStillComparesPassword(t *testing.T) {
+	var compares int
+	login := application.NewLogin(
+		failingUserRepo{err: context.DeadlineExceeded},
+		countingHasher{inner: bcrypt.NewHasher(0), n: &compares},
+		mustAccessTokens(t),
+		sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		ratelimit.NewLoginLimiter(10, time.Minute),
+		nil,
+	)
+	_, err := login.Execute(context.Background(), application.LoginInput{
+		Email:    "login@example.com",
+		Password: "Password1!",
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want DeadlineExceeded", err)
+	}
+	if compares != 1 {
+		t.Fatalf("Compare calls = %d, want 1", compares)
+	}
+}
+
+type failingUserRepo struct {
+	err error
+}
+
+func (r failingUserRepo) Save(context.Context, domain.User) error { return nil }
+
+func (r failingUserRepo) GetByEmail(context.Context, string) (domain.User, error) {
+	return domain.User{}, r.err
+}
+
+func (r failingUserRepo) GetByID(context.Context, string) (domain.User, error) {
+	return domain.User{}, r.err
+}
+
 func newLoginForLogs(t *testing.T, log *zap.Logger, repo *memory.UserRepository) *application.Login {
 	t.Helper()
 	return application.NewLogin(
 		repo,
 		bcrypt.NewHasher(0),
 		mustAccessTokens(t),
-		tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
 		ratelimit.NewLoginLimiter(10, time.Minute),
 		log,
 	)
@@ -228,8 +266,12 @@ func assertFailedLoginLog(t *testing.T, logs *observer.ObservedLogs, email, reas
 		t.Fatalf("login failed logs = %d, want 1", len(entries))
 	}
 	fields := entries[0].ContextMap()
-	if got, _ := fields["email"].(string); got != email {
-		t.Fatalf("email = %q, want %q", got, email)
+	if _, ok := fields["email"]; ok {
+		t.Fatal("raw email must not be logged")
+	}
+	wantHash := sha256Hex(email)
+	if got, _ := fields["email_hash"].(string); got != wantHash {
+		t.Fatalf("email_hash = %q, want %q", got, wantHash)
 	}
 	if got, _ := fields["reason"].(string); got != reason {
 		t.Fatalf("reason = %q, want %q", got, reason)
@@ -245,4 +287,12 @@ func assertFailedLoginLog(t *testing.T, logs *observer.ObservedLogs, email, reas
 	if strings.Contains(fmt.Sprint(fields), password) || strings.Contains(entries[0].Message, password) {
 		t.Fatal("password must not appear in login failed log")
 	}
+	if strings.Contains(fmt.Sprint(fields), email) || strings.Contains(entries[0].Message, email) {
+		t.Fatal("raw email must not appear in login failed log")
+	}
+}
+
+func sha256Hex(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }

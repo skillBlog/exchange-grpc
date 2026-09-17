@@ -60,6 +60,37 @@ func NewWatcher(
 	}
 }
 
+// Check выполняет один цикл проверок и обновляет статус.
+// Критичная ошибка возвращается вызывающему — для fail-fast до Serve().
+func (w *Watcher) Check(ctx context.Context) error {
+	status := healthpb.HealthCheckResponse_SERVING
+	checkCtx, cancel := context.WithTimeout(ctx, w.checkTimeout)
+	defer cancel()
+
+	var firstErr error
+	for _, check := range w.criticalChecks {
+		if err := check(checkCtx); err != nil {
+			status = healthpb.HealthCheckResponse_NOT_SERVING
+			w.log.Error("critical health check failed", zap.Error(err))
+			firstErr = err
+			break
+		}
+	}
+
+	if firstErr == nil {
+		for _, check := range w.optionalChecks {
+			if err := check(checkCtx); err != nil {
+				w.log.Warn("optional health check failed", zap.Error(err))
+			}
+		}
+	}
+
+	if w.serviceName != "" {
+		w.server.SetServingStatus(w.serviceName, status)
+	}
+	return firstErr
+}
+
 // Run запускает периодические health checks до отмены контекста.
 func (w *Watcher) Run(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
@@ -70,32 +101,7 @@ func (w *Watcher) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.update(ctx)
+			_ = w.Check(ctx)
 		}
-	}
-}
-
-func (w *Watcher) update(ctx context.Context) {
-	status := healthpb.HealthCheckResponse_SERVING
-	checkCtx, cancel := context.WithTimeout(ctx, w.checkTimeout)
-	defer cancel()
-
-	for _, check := range w.criticalChecks {
-		if err := check(checkCtx); err != nil {
-			status = healthpb.HealthCheckResponse_NOT_SERVING
-			w.log.Error("critical health check failed", zap.Error(err))
-			break
-		}
-	}
-
-	for _, check := range w.optionalChecks {
-		if err := check(checkCtx); err != nil {
-			w.log.Warn("optional health check failed", zap.Error(err))
-		}
-	}
-
-	// Только статус именованного сервиса — без глобального "" (ментор: не валить весь server status).
-	if w.serviceName != "" {
-		w.server.SetServingStatus(w.serviceName, status)
 	}
 }

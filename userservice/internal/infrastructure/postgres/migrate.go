@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/stdlib"
@@ -30,14 +29,4 @@ func RunMigrations(ctx context.Context, db *DB, migrationsDir string) error {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	return nil
-}
-
-// Ping проверяет доступность PostgreSQL.
-func Ping(ctx context.Context, databaseURL string) error {
-	sqlDB, err := sql.Open("pgx", databaseURL)
-	if err != nil {
-		return err
-	}
-	defer sqlDB.Close()
-	return sqlDB.PingContext(ctx)
 }

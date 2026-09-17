@@ -19,6 +19,7 @@ const (
 	defaultRedisURL              = "redis://localhost:6379/0"
 	defaultRedisPoolSize         = 10
 	defaultRedisMaxRetries       = 3
+	defaultMetricsAddr           = ":2112"
 )
 
 // Config содержит runtime-конфигурацию spotservice.
@@ -36,6 +37,7 @@ type Config struct {
 	RedisURL              string
 	RedisPoolSize         int
 	RedisMaxRetries       int
+	MetricsAddr           string
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
@@ -54,6 +56,7 @@ func LoadConfig() Config {
 		RedisURL:              envOrDefault("REDIS_URL", defaultRedisURL),
 		RedisPoolSize:         envIntOrDefault("REDIS_POOL_SIZE", defaultRedisPoolSize),
 		RedisMaxRetries:       envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
+		MetricsAddr:           envOrDefault("METRICS_ADDR", defaultMetricsAddr),
 	}
 }
 

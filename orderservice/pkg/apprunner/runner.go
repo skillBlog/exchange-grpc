@@ -21,6 +21,7 @@ import (
 	"github.com/exchange-grpc/shared/grpc"
 	sharedhealth "github.com/exchange-grpc/shared/health"
 	"github.com/exchange-grpc/shared/logger"
+	sharedmetrics "github.com/exchange-grpc/shared/metrics"
 	sharedredis "github.com/exchange-grpc/shared/redis"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/shared/tracing"
@@ -50,6 +51,8 @@ func (r *AppRunner) Run() {
 	defer func() { _ = log.Sync() }()
 	admin := logger.ServeLevelAdmin(r.cfg.LogLevelAddr, level, log)
 	defer logger.ShutdownLevelAdmin(admin, log)
+	metricsSrv := sharedmetrics.Serve(r.cfg.MetricsAddr, log)
+	defer sharedmetrics.Shutdown(metricsSrv, log)
 
 	if err := r.run(log); err != nil {
 		log.Fatal("orderservice failed", zap.Error(err))
@@ -152,7 +155,6 @@ func (r *AppRunner) run(log *zap.Logger) error {
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus(orderv1.OrderService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
 
 	listener, err := net.Listen("tcp", r.cfg.GRPCAddr)
 	if err != nil {
@@ -173,6 +175,10 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		criticalChecks,
 		optionalChecks...,
 	)
+	if err := healthWatcher.Check(runCtx); err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("initial health check: %w", err)
+	}
 	go healthWatcher.Run(runCtx)
 
 	return sharedapprunner.ServeUntilSignal(

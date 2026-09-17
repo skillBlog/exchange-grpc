@@ -1,10 +1,13 @@
 package grpc_test
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	sharederrors "github.com/exchange-grpc/shared/errors"
 	sharedgrpc "github.com/exchange-grpc/shared/grpc"
+	"github.com/exchange-grpc/shared/sessionvalidation"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -18,6 +21,7 @@ func TestStatusFromError_commonMappings(t *testing.T) {
 		{name: "not found", err: sharederrors.ErrNotFound, code: codes.NotFound},
 		{name: "forbidden", err: sharederrors.ErrForbidden, code: codes.PermissionDenied},
 		{name: "unauthorized", err: sharederrors.ErrUnauthorized, code: codes.Unauthenticated},
+		{name: "invalid token", err: sessionvalidation.ErrInvalidToken, code: codes.Unauthenticated},
 		{name: "rate limited", err: sharederrors.ErrRateLimited, code: codes.ResourceExhausted},
 		{name: "failed precondition", err: sharederrors.ErrFailedPrecondition, code: codes.FailedPrecondition},
 	}
@@ -43,5 +47,44 @@ func TestToStatusError_rateLimitedMessage(t *testing.T) {
 	}
 	if st.Code() != codes.ResourceExhausted || st.Message() != "too many requests" {
 		t.Fatalf("unexpected status: %v", st)
+	}
+}
+
+func TestToStatusError_invalidToken(t *testing.T) {
+	err := sharedgrpc.ToStatusError(fmt.Errorf("validate jwt: %w", sessionvalidation.ErrInvalidToken), "")
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatal("expected gRPC status")
+	}
+	if st.Code() != codes.Unauthenticated {
+		t.Fatalf("code = %v, want Unauthenticated", st.Code())
+	}
+	if st.Message() != "validate jwt: invalid token" {
+		t.Fatalf("message = %q, want wrapped invalid token", st.Message())
+	}
+}
+
+func TestToStatusError_extraOverridesDefault(t *testing.T) {
+	err := sharedgrpc.ToStatusError(
+		fmt.Errorf("login: %w", sharederrors.ErrUnauthorized),
+		"too many login attempts",
+		sharedgrpc.ErrorMapping{Sentinel: sharederrors.ErrUnauthorized, Code: codes.Unauthenticated, Message: "invalid credentials"},
+	)
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatal("expected gRPC status")
+	}
+	if st.Code() != codes.Unauthenticated || st.Message() != "invalid credentials" {
+		t.Fatalf("unexpected status: %v", st)
+	}
+}
+
+func TestErrMissingUserID_isStableSentinel(t *testing.T) {
+	wrapped := fmt.Errorf("handler: %w", sharedgrpc.ErrMissingUserID)
+	if !errors.Is(wrapped, sharedgrpc.ErrMissingUserID) {
+		t.Fatal("expected errors.Is to match wrapped ErrMissingUserID")
+	}
+	if status.Code(sharedgrpc.ErrMissingUserID) != codes.Unauthenticated {
+		t.Fatalf("code = %v, want Unauthenticated", status.Code(sharedgrpc.ErrMissingUserID))
 	}
 }

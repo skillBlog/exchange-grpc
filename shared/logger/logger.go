@@ -64,7 +64,7 @@ func ServeLevelAdmin(addr string, level zap.AtomicLevel, log *zap.Logger) *http.
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			if log != nil {
-				log.Warn("log level admin server stopped", zap.Error(err))
+				log.Error("log level admin server stopped", zap.Error(err))
 			}
 		}
 	}()

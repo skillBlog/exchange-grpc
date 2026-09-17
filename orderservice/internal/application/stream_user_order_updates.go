@@ -43,7 +43,10 @@ func (uc *StreamUserOrderUpdates) Execute(ctx context.Context, input StreamUserO
 		return fmt.Errorf("order update hub is not configured")
 	}
 
-	updates, unsubscribe := uc.hub.SubscribeUser(userID)
+	updates, unsubscribe := uc.hub.SubscribeUser(userID, UserStreamFilter{
+		MarketID: marketID,
+		Status:   input.Status,
+	})
 	defer unsubscribe()
 
 	for {
@@ -54,22 +57,9 @@ func (uc *StreamUserOrderUpdates) Execute(ctx context.Context, input StreamUserO
 			if !ok {
 				return nil
 			}
-			if !matchesUserStreamFilter(update, marketID, input.Status) {
-				continue
-			}
 			if err = send(update); err != nil {
-				return err
+				return fmt.Errorf("send order update: %w", err)
 			}
 		}
 	}
-}
-
-func matchesUserStreamFilter(event UpdateEvent, marketID string, status domain.OrderStatus) bool {
-	if marketID != "" && event.MarketID != marketID {
-		return false
-	}
-	if status != "" && event.Status != status {
-		return false
-	}
-	return true
 }

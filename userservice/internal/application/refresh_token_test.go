@@ -11,7 +11,6 @@ import (
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/memory"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/ratelimit"
-	"github.com/exchange-grpc/userservice/internal/infrastructure/tokens"
 )
 
 func TestRefreshToken_success(t *testing.T) {
@@ -21,9 +20,9 @@ func TestRefreshToken_success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, nil)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "refresh@example.com",
 		Password: "Password1!",
@@ -40,7 +39,7 @@ func TestRefreshToken_success(t *testing.T) {
 		t.Fatalf("login error = %v", err)
 	}
 
-	refreshUC := application.NewRefreshToken(repo, accessTokens, refreshTokens)
+	refreshUC := application.NewRefreshToken(repo, accessTokens, refreshTokens, nil)
 	out, err := refreshUC.Execute(context.Background(), application.RefreshTokenInput{
 		RefreshToken: loginOut.RefreshToken,
 	})
@@ -77,9 +76,9 @@ func TestRefreshToken_usesLiveRolesFromRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, nil)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "roles@example.com",
 		Password: "Password1!",
@@ -105,7 +104,7 @@ func TestRefreshToken_usesLiveRolesFromRepository(t *testing.T) {
 		t.Fatalf("login error = %v", err)
 	}
 
-	refreshUC := application.NewRefreshToken(repo, accessTokens, refreshTokens)
+	refreshUC := application.NewRefreshToken(repo, accessTokens, refreshTokens, nil)
 	out, err := refreshUC.Execute(context.Background(), application.RefreshTokenInput{
 		RefreshToken: loginOut.RefreshToken,
 	})
@@ -128,8 +127,8 @@ func TestGetUser_success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
-	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, nil)
 	registerOut, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "profile@example.com",
 		Password: "Password1!",
@@ -155,9 +154,9 @@ func TestLogout_revokesRefreshToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(refreshRepo, 24*time.Hour)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(refreshRepo, 24*time.Hour)
 
-	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
+	register := application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, nil)
 	if _, err := register.Execute(context.Background(), application.RegisterInput{
 		Email:    "logout@example.com",
 		Password: "Password1!",
@@ -174,12 +173,12 @@ func TestLogout_revokesRefreshToken(t *testing.T) {
 		t.Fatalf("login error = %v", err)
 	}
 
-	logout := application.NewLogout(refreshTokens)
+	logout := application.NewLogout(refreshTokens, nil)
 	if err := logout.Execute(context.Background(), application.LogoutInput{RefreshToken: loginOut.RefreshToken}); err != nil {
 		t.Fatalf("logout error = %v", err)
 	}
 
-	refreshUC := application.NewRefreshToken(repo, accessTokens, refreshTokens)
+	refreshUC := application.NewRefreshToken(repo, accessTokens, refreshTokens, nil)
 	if _, err := refreshUC.Execute(context.Background(), application.RefreshTokenInput{RefreshToken: loginOut.RefreshToken}); err == nil {
 		t.Fatal("expected refresh to fail after logout")
 	}

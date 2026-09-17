@@ -47,6 +47,10 @@ func NewRedisLoginLimiter(client *redis.Client, maxAttempts int, window time.Dur
 
 // Allow проверяет лимит попыток входа по email.
 func (l *RedisLoginLimiter) Allow(ctx context.Context, email string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	key := fmt.Sprintf("%s:%s", l.prefix, email)
 	result, err := loginAllowScript.Run(
 		ctx,

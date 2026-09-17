@@ -684,15 +684,14 @@ var File_order_v1_order_service_proto protoreflect.FileDescriptor
 
 const file_order_v1_order_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1corder/v1/order_service.proto\x12\border.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17common/v1/decimal.proto\x1a\x15common/v1/money.proto\x1a\x1acommon/v1/order_side.proto\x1a\x1ccommon/v1/order_status.proto\x1a\x1acommon/v1/pagination.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa1\x02\n" +
+	"\x1corder/v1/order_service.proto\x12\border.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17common/v1/decimal.proto\x1a\x15common/v1/money.proto\x1a\x1acommon/v1/order_side.proto\x1a\x1ccommon/v1/order_status.proto\x1a\x1acommon/v1/pagination.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb3\x02\n" +
 	"\x12CreateOrderRequest\x12=\n" +
 	"\tmarket_id\x18\x01 \x01(\tB \xbaH\x1dr\x1b\x10\x01\x18@2\x15^[A-Z0-9]+-[A-Z0-9]+$R\bmarketId\x124\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x14.common.v1.OrderSideB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\x04side\x12&\n" +
 	"\x05price\x18\x03 \x01(\v2\x10.common.v1.MoneyR\x05price\x126\n" +
-	"\bquantity\x18\x04 \x01(\v2\x12.common.v1.DecimalB\x06\xbaH\x03\xc8\x01\x01R\bquantity\x126\n" +
-	"\x0fidempotency_key\x18\x05 \x01(\tB\r\xbaH\n" +
-	"\xd8\x01\x01r\x05\x10\x01\x18\x80\x01R\x0eidempotencyKey\"j\n" +
+	"\bquantity\x18\x04 \x01(\v2\x12.common.v1.DecimalB\x06\xbaH\x03\xc8\x01\x01R\bquantity\x12H\n" +
+	"\x0fidempotency_key\x18\x05 \x01(\tB\x1f\xbaH\x1c\xd8\x01\x01r\x17\x10\x01\x18\x80\x012\x10^[A-Za-z0-9_-]+$R\x0eidempotencyKey\"j\n" +
 	"\x13CreateOrderResponse\x12#\n" +
 	"\border_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\aorderId\x12.\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x16.common.v1.OrderStatusR\x06status\"<\n" +

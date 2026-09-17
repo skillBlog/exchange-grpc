@@ -12,7 +12,6 @@ import (
 	"github.com/exchange-grpc/userservice/internal/domain"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/memory"
-	"github.com/exchange-grpc/userservice/internal/infrastructure/tokens"
 )
 
 func newRegisterUC(t *testing.T, repo domain.UserRepository) *application.Register {
@@ -21,8 +20,8 @@ func newRegisterUC(t *testing.T, repo domain.UserRepository) *application.Regist
 	if err != nil {
 		t.Fatalf("NewTokenService() error = %v", err)
 	}
-	refreshTokens := tokens.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
-	return application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens)
+	refreshTokens := sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour)
+	return application.NewRegister(repo, bcrypt.NewHasher(0), accessTokens, refreshTokens, nil)
 }
 
 func TestRegister_success(t *testing.T) {

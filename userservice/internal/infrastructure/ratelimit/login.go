@@ -41,7 +41,11 @@ func NewLoginLimiter(maxAttempts int, window time.Duration) *LoginLimiter {
 }
 
 // Allow возвращает ошибку, если лимит попыток исчерпан.
-func (l *LoginLimiter) Allow(_ context.Context, email string) error {
+func (l *LoginLimiter) Allow(ctx context.Context, email string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

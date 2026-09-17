@@ -33,6 +33,13 @@ func End(span trace.Span, err *error) {
 	span.End()
 }
 
+// Run создаёт child span вокруг fn.
+func Run(ctx context.Context, name string, fn func(context.Context) error) (err error) {
+	ctx, span := Start(ctx, name)
+	defer End(span, &err)
+	return fn(ctx)
+}
+
 // Attr — короткий alias для атрибутов span.
 func Attr(key, value string) attribute.KeyValue {
 	return attribute.String(key, value)

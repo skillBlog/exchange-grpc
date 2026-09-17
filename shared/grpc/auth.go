@@ -51,9 +51,7 @@ func OutgoingContextWithAuth(ctx context.Context, tokens *sessionvalidation.Toke
 }
 
 // ErrMissingUserID возвращается, когда user_id отсутствует в контексте.
-func ErrMissingUserID() error {
-	return status.Error(codes.Unauthenticated, "user_id is required")
-}
+var ErrMissingUserID = status.Error(codes.Unauthenticated, "user_id is required")
 
 type wrappedServerStream struct {
 	grpc.ServerStream

@@ -21,6 +21,7 @@ const (
 	defaultRedisURL        = "redis://localhost:6379/0"
 	defaultRedisPoolSize   = 10
 	defaultRedisMaxRetries = 3
+	defaultMetricsAddr     = ":2112"
 
 	defaultCreateOrderGlobalLimit  = 20000
 	defaultCreateOrderBasicLimit   = 10
@@ -46,6 +47,7 @@ type Config struct {
 	RedisPoolSize         int
 	RedisMaxRetries       int
 	LogLevelAddr          string
+	MetricsAddr           string
 	CreateOrderRateLimit  CreateOrderRateLimitConfig
 }
 
@@ -77,6 +79,7 @@ func LoadConfig() Config {
 		RedisPoolSize:      envIntOrDefault("REDIS_POOL_SIZE", defaultRedisPoolSize),
 		RedisMaxRetries:    envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
 		LogLevelAddr:       os.Getenv("LOG_LEVEL_ADDR"),
+		MetricsAddr:        envOrDefault("METRICS_ADDR", defaultMetricsAddr),
 		CreateOrderRateLimit: CreateOrderRateLimitConfig{
 			GlobalLimit:  envIntOrDefault("CREATE_ORDER_GLOBAL_RATE_LIMIT", defaultCreateOrderGlobalLimit),
 			GlobalWindow: envDurationOrDefault("CREATE_ORDER_GLOBAL_RATE_WINDOW", defaultCreateOrderRateWindow),

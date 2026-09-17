@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	sharedgrpc "github.com/exchange-grpc/shared/grpc"
-	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/spotservice/internal/domain"
 	"go.uber.org/zap"
@@ -48,32 +46,16 @@ func (uc *GetMarket) Execute(ctx context.Context, input GetMarketInput) (market 
 
 	market, err = uc.markets.GetByID(ctx, marketID)
 	if err != nil {
-		return domain.Market{}, err
+		return domain.Market{}, fmt.Errorf("get market: %w", err)
 	}
 	if !market.IsAccessibleBy(input.UserRoles) {
-		uc.logDenied(ctx, input.UserID, market.ID)
+		logWarn(ctx, uc.log, "get market denied", input.UserID,
+			zap.String("market_id", market.ID),
+			zap.String("reason", "forbidden"),
+		)
 		return domain.Market{}, fmt.Errorf("%w: market %q", domain.ErrForbidden, market.ID)
 	}
 
-	fields := []zap.Field{
-		zap.String("user_id", input.UserID),
-		zap.String("market_id", market.ID),
-	}
-	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
-		fields = append(fields, zap.String("request_id", requestID))
-	}
-	logger.WithTrace(ctx, uc.log).Info("get market", fields...)
+	logAudit(ctx, uc.log, "get market", input.UserID, zap.String("market_id", market.ID))
 	return market, nil
-}
-
-func (uc *GetMarket) logDenied(ctx context.Context, userID, marketID string) {
-	fields := []zap.Field{
-		zap.String("user_id", userID),
-		zap.String("market_id", marketID),
-		zap.String("reason", "forbidden"),
-	}
-	if requestID := sharedgrpc.RequestIDFromContext(ctx); requestID != "" {
-		fields = append(fields, zap.String("request_id", requestID))
-	}
-	logger.WithTrace(ctx, uc.log).Warn("get market denied", fields...)
 }

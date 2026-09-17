@@ -8,6 +8,7 @@ import (
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/shared/tracing"
+	"go.uber.org/zap"
 )
 
 // UpdateOrderStatusInput — запрос на смену статуса ордера.
@@ -21,14 +22,19 @@ type UpdateOrderStatusInput struct {
 type UpdateOrderStatus struct {
 	orders   domain.OrderRepository
 	notifier OrderNotifier
+	log      *zap.Logger
 	now      func() time.Time
 }
 
 // NewUpdateOrderStatus создаёт use case UpdateOrderStatus.
-func NewUpdateOrderStatus(orders domain.OrderRepository, notifier OrderNotifier) *UpdateOrderStatus {
+func NewUpdateOrderStatus(orders domain.OrderRepository, notifier OrderNotifier, log *zap.Logger) *UpdateOrderStatus {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &UpdateOrderStatus{
 		orders:   orders,
 		notifier: notifier,
+		log:      log,
 		now:      time.Now,
 	}
 }
@@ -55,7 +61,7 @@ func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatu
 
 	order, err := uc.orders.GetByIDAndUserID(ctx, orderID, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get order: %w", err)
 	}
 
 	if err := domain.ValidateTransition(order.Status, input.Status); err != nil {
@@ -64,7 +70,7 @@ func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatu
 
 	now := uc.now().UTC()
 	if err := uc.orders.UpdateStatus(ctx, order.ID, input.Status, now); err != nil {
-		return err
+		return fmt.Errorf("update order status: %w", err)
 	}
 
 	if uc.notifier != nil {
@@ -76,5 +82,10 @@ func (uc *UpdateOrderStatus) Execute(ctx context.Context, input UpdateOrderStatu
 			UpdatedAt: now,
 		})
 	}
+
+	logAudit(ctx, uc.log, "order status updated", userID,
+		zap.String("order_id", order.ID),
+		zap.String("status", string(input.Status)),
+	)
 	return nil
 }

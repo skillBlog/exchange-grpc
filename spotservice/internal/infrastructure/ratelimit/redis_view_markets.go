@@ -47,6 +47,10 @@ func NewRedisViewMarketsLimiter(client *redis.Client, maxAttempts int, window ti
 
 // Allow проверяет лимит вызовов ViewMarkets по user_id.
 func (l *RedisViewMarketsLimiter) Allow(ctx context.Context, userID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	key := fmt.Sprintf("%s:%s", l.prefix, userID)
 	result, err := viewMarketsAllowScript.Run(
 		ctx,

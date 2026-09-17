@@ -7,7 +7,9 @@ import (
 	"time"
 
 	spotv1 "github.com/exchange-grpc/proto/pb/spot/v1"
+	sharedapprunner "github.com/exchange-grpc/shared/apprunner"
 	"github.com/exchange-grpc/shared/grpc"
+	"github.com/exchange-grpc/shared/logger"
 	"github.com/exchange-grpc/shared/sessionvalidation"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/memory"
 	grpcserver "github.com/exchange-grpc/spotservice/internal/interfaces/grpcserver"
@@ -74,7 +76,7 @@ func NewSpot(t *testing.T, tokens *sessionvalidation.TokenService) *Spot {
 
 	t.Cleanup(func() {
 		conn.Close()
-		grpcServer.Stop()
+		sharedapprunner.GracefulStop(grpcServer, 2*time.Second, logger.NewNop())
 	})
 
 	return &Spot{

@@ -1,8 +1,6 @@
 package grpcserver
 
 import (
-	"errors"
-
 	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
 	"github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/shared/roles"
@@ -57,13 +55,4 @@ func rolesToProto(values []string) []commonv1.Role {
 		}
 	}
 	return result
-}
-
-// IsDomainError сообщает, распознана ли ошибка как domain sentinel.
-func IsDomainError(err error) bool {
-	return errors.Is(err, domain.ErrInvalidArgument) ||
-		errors.Is(err, domain.ErrNotFound) ||
-		errors.Is(err, domain.ErrFailedPrecondition) ||
-		errors.Is(err, domain.ErrMarketInactive) ||
-		errors.Is(err, domain.ErrForbidden)
 }

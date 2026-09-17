@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/exchange-grpc/userservice/internal/domain"
 )
@@ -78,102 +77,4 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (domain.User, e
 
 func normalizeEmail(email string) string {
 	return strings.TrimSpace(strings.ToLower(email))
-}
-
-// RefreshTokenRepository — in-memory хранилище refresh token для тестов.
-type RefreshTokenRepository struct {
-	mu     sync.RWMutex
-	byID   map[string]domain.RefreshToken
-	byHash map[string]string
-}
-
-// NewRefreshTokenRepository создаёт in-memory refresh token repository.
-func NewRefreshTokenRepository() *RefreshTokenRepository {
-	return &RefreshTokenRepository{
-		byID:   make(map[string]domain.RefreshToken),
-		byHash: make(map[string]string),
-	}
-}
-
-// Save сохраняет refresh token.
-func (r *RefreshTokenRepository) Save(ctx context.Context, token domain.RefreshToken) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.byID[token.ID] = token
-	r.byHash[token.TokenHash] = token.ID
-	return nil
-}
-
-// GetByTokenHash возвращает refresh token по хешу.
-func (r *RefreshTokenRepository) GetByTokenHash(ctx context.Context, tokenHash string) (domain.RefreshToken, error) {
-	if err := ctx.Err(); err != nil {
-		return domain.RefreshToken{}, err
-	}
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	id, ok := r.byHash[tokenHash]
-	if !ok {
-		return domain.RefreshToken{}, domain.ErrUnauthorized
-	}
-	token, ok := r.byID[id]
-	if !ok {
-		return domain.RefreshToken{}, domain.ErrUnauthorized
-	}
-	return token, nil
-}
-
-// Revoke помечает refresh token отозванным.
-// Идемпотентно: отсутствующий или уже отозванный токен не считаются ошибкой.
-func (r *RefreshTokenRepository) Revoke(ctx context.Context, id string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	token, ok := r.byID[id]
-	if !ok {
-		return nil
-	}
-	if token.RevokedAt != nil {
-		return nil
-	}
-	now := time.Now()
-	token.RevokedAt = &now
-	r.byID[id] = token
-	return nil
-}
-
-// Rotate атомарно отзывает старый refresh token и сохраняет новый.
-func (r *RefreshTokenRepository) Rotate(ctx context.Context, oldTokenHash string, now time.Time, newToken domain.RefreshToken) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	id, ok := r.byHash[oldTokenHash]
-	if !ok {
-		return domain.ErrUnauthorized
-	}
-	old, ok := r.byID[id]
-	if !ok || !old.IsActive(now) || old.UserID != newToken.UserID {
-		return domain.ErrUnauthorized
-	}
-
-	revokedAt := now
-	old.RevokedAt = &revokedAt
-	r.byID[id] = old
-	r.byID[newToken.ID] = newToken
-	r.byHash[newToken.TokenHash] = newToken.ID
-	return nil
 }

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -73,7 +74,7 @@ func (uc *ListOrders) Execute(ctx context.Context, input ListOrdersInput) (out L
 		Status:   input.Status,
 	})
 	if err != nil {
-		return ListOrdersOutput{}, err
+		return ListOrdersOutput{}, fmt.Errorf("list orders: %w", err)
 	}
 
 	hasMore := len(orders) > int(pageSize)

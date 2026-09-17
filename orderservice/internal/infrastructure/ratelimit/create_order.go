@@ -51,7 +51,11 @@ func NewCreateOrderLimiter(cfg application.CreateOrderRateLimitConfig) *CreateOr
 }
 
 // Allow проверяет глобальный и per-user лимиты.
-func (l *CreateOrderLimiter) Allow(_ context.Context, userID string, userRoles []string) error {
+func (l *CreateOrderLimiter) Allow(ctx context.Context, userID string, userRoles []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

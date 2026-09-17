@@ -77,6 +77,29 @@ func TestLoginLimiter_stillRateLimitsSameEmail(t *testing.T) {
 	}
 }
 
+func TestLoginLimiter_cancelledContextDoesNotCount(t *testing.T) {
+	limiter := NewLoginLimiter(1, time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := limiter.Allow(ctx, "same@example.com"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Allow() error = %v, want Canceled", err)
+	}
+	if err := limiter.Allow(context.Background(), "same@example.com"); err != nil {
+		t.Fatalf("live Allow() error = %v", err)
+	}
+}
+
+func TestRedisLoginLimiter_cancelledContextSkipsRedis(t *testing.T) {
+	limiter := NewRedisLoginLimiter(nil, 1, time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := limiter.Allow(ctx, "same@example.com"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Allow() error = %v, want Canceled", err)
+	}
+}
+
 func TestLoginLimiter_concurrentUniqueEmailsStayBounded(t *testing.T) {
 	limiter := &LoginLimiter{
 		attempts:    make(map[string][]time.Time),

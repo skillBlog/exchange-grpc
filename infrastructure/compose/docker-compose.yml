@@ -73,6 +73,7 @@ services:
     container_name: exchange-userservice
     ports:
       - "50050:50050"
+      - "2112:2112"
     environment:
       USER_SERVICE_ADDR: ":50050"
       JWT_SECRET: "dev-exchange-secret"
@@ -84,6 +85,7 @@ services:
       LOGIN_RATE_WINDOW: "1m"
       REDIS_URL: "redis://redis:6379/0"
       LOG_LEVEL: "info"
+      METRICS_ADDR: ":2112"
       OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
       OTEL_SERVICE_NAME: "userservice"
     depends_on:
@@ -103,6 +105,7 @@ services:
     container_name: exchange-spotservice
     ports:
       - "50051:50051"
+      - "2113:2112"
     environment:
       SPOT_SERVICE_ADDR: ":50051"
       JWT_SECRET: "dev-exchange-secret"
@@ -111,6 +114,7 @@ services:
       SPOT_MIGRATIONS_DIR: "/app/migrations"
       MARKET_CACHE_TTL: "30s"
       VIEW_MARKETS_RATE_LIMIT: "30"
+      METRICS_ADDR: ":2112"
       OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
       OTEL_SERVICE_NAME: "spotservice"
     depends_on:
@@ -128,6 +132,7 @@ services:
     container_name: exchange-orderservice
     ports:
       - "50052:50052"
+      - "2114:2112"
     environment:
       ORDER_SERVICE_ADDR: ":50052"
       SPOT_SERVICE_HOST: "spotservice:50051"
@@ -142,6 +147,7 @@ services:
       CREATE_ORDER_RATE_LIMIT_USER: "10"
       CREATE_ORDER_RATE_LIMIT_TRADER: "100"
       CREATE_ORDER_RATE_LIMIT_ADMIN: "1000"
+      METRICS_ADDR: ":2112"
       OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
       OTEL_SERVICE_NAME: "orderservice"
     depends_on:
@@ -155,6 +161,43 @@ services:
         condition: service_started
       tempo:
         condition: service_started
+    networks:
+      - exchange
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: exchange-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - userservice
+      - spotservice
+      - orderservice
+    networks:
+      - exchange
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: exchange-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: "dark"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
     networks:
       - exchange
 

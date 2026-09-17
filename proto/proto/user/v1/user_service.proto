@@ -24,7 +24,11 @@ message RegisterRequest {
 message RegisterResponse {
   string user_id = 1 [(buf.validate.field).string.uuid = true];
   string access_token = 2 [(buf.validate.field).string.min_len = 1];
-  string refresh_token = 3;
+  string refresh_token = 3 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 128,
+    pattern: "^[A-Za-z0-9_-]+$"
+  }];
 }
 
 message LoginRequest {
@@ -34,16 +38,28 @@ message LoginRequest {
 
 message LoginResponse {
   string access_token = 1 [(buf.validate.field).string.min_len = 1];
-  string refresh_token = 2;
+  string refresh_token = 2 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 128,
+    pattern: "^[A-Za-z0-9_-]+$"
+  }];
 }
 
 message RefreshTokenRequest {
-  string refresh_token = 1 [(buf.validate.field).string.min_len = 1];
+  string refresh_token = 1 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 128,
+    pattern: "^[A-Za-z0-9_-]+$"
+  }];
 }
 
 message RefreshTokenResponse {
   string access_token = 1 [(buf.validate.field).string.min_len = 1];
-  string refresh_token = 2 [(buf.validate.field).string.min_len = 1];
+  string refresh_token = 2 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 128,
+    pattern: "^[A-Za-z0-9_-]+$"
+  }];
 }
 
 // GetUserRequest — user_id извлекается из JWT/metadata.
@@ -56,7 +72,11 @@ message GetUserResponse {
 }
 
 message LogoutRequest {
-  string refresh_token = 1 [(buf.validate.field).string.min_len = 1];
+  string refresh_token = 1 [(buf.validate.field).string = {
+    min_len: 1,
+    max_len: 128,
+    pattern: "^[A-Za-z0-9_-]+$"
+  }];
 }
 
 message LogoutResponse {}

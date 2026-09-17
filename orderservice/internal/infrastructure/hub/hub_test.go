@@ -19,7 +19,7 @@ func TestUpdateHub_doubleUnsubscribeDoesNotPanic(t *testing.T) {
 	unsubscribe()
 	unsubscribe()
 
-	_, unsubUser := orderHub.SubscribeUser("user-1")
+	_, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
 	unsubUser()
 	unsubUser()
 }
@@ -68,9 +68,9 @@ func TestUpdateHub_subscriberReceivesPublishedEvents(t *testing.T) {
 func TestUpdateHub_userSubscriberReceivesEvents(t *testing.T) {
 	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
-	updates, unsubscribe := orderHub.SubscribeUser("user-1")
+	updates, unsubscribe := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
 	defer unsubscribe()
-	other, unsubOther := orderHub.SubscribeUser("user-2")
+	other, unsubOther := orderHub.SubscribeUser("user-2", application.UserStreamFilter{})
 	defer unsubOther()
 
 	orderHub.Publish(application.UpdateEvent{
@@ -101,7 +101,7 @@ func TestUpdateHub_publishFansOutToOrderAndUser(t *testing.T) {
 
 	byOrder, unsubOrder := orderHub.Subscribe("order-1")
 	defer unsubOrder()
-	byUser, unsubUser := orderHub.SubscribeUser("user-1")
+	byUser, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
 	defer unsubUser()
 
 	orderHub.Publish(application.UpdateEvent{
@@ -121,4 +121,88 @@ func TestUpdateHub_publishFansOutToOrderAndUser(t *testing.T) {
 			t.Fatal("timed out waiting for fan-out event")
 		}
 	}
+}
+
+func TestUpdateHub_unsubscribeThenPublishDoesNotPanic(t *testing.T) {
+	core, logs := observer.New(zap.ErrorLevel)
+	orderHub := hub.NewUpdateHub(4, zap.New(core), 20*time.Millisecond)
+
+	_, unsubscribe := orderHub.Subscribe("order-1")
+	unsubscribe()
+
+	orderHub.Publish(application.UpdateEvent{
+		OrderID:   "order-1",
+		Status:    domain.OrderStatusFilled,
+		UpdatedAt: time.Now().UTC(),
+	})
+
+	if logs.FilterMessage("order update publish panic recovered").Len() != 0 {
+		t.Fatal("unsubscribe must not close the channel and panic Publish")
+	}
+}
+
+func TestUpdateHub_userFilterDropsNonMatchingEvents(t *testing.T) {
+	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
+
+	updates, unsubscribe := orderHub.SubscribeUser("user-1", application.UserStreamFilter{
+		MarketID: "BTC-USDT",
+		Status:   domain.OrderStatusCreated,
+	})
+	defer unsubscribe()
+
+	orderHub.Publish(application.UpdateEvent{
+		OrderID:  "order-eth",
+		UserID:   "user-1",
+		MarketID: "ETH-USDT",
+		Status:   domain.OrderStatusCreated,
+	})
+	orderHub.Publish(application.UpdateEvent{
+		OrderID:  "order-filled",
+		UserID:   "user-1",
+		MarketID: "BTC-USDT",
+		Status:   domain.OrderStatusFilled,
+	})
+	orderHub.Publish(application.UpdateEvent{
+		OrderID:  "order-btc",
+		UserID:   "user-1",
+		MarketID: "BTC-USDT",
+		Status:   domain.OrderStatusCreated,
+	})
+
+	select {
+	case event := <-updates:
+		if event.OrderID != "order-btc" {
+			t.Fatalf("OrderID = %q, want order-btc", event.OrderID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for matching event")
+	}
+
+	select {
+	case event := <-updates:
+		t.Fatalf("received extra event %+v", event)
+	default:
+	}
+}
+
+func TestUpdateHub_concurrentUnsubscribeAndPublish(t *testing.T) {
+	orderHub := hub.NewUpdateHub(8, logger.NewNop(), time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			orderHub.Publish(application.UpdateEvent{
+				OrderID: "order-1",
+				UserID:  "user-1",
+				Status:  domain.OrderStatusCreated,
+			})
+		}
+	}()
+	for i := 0; i < 200; i++ {
+		_, unsub := orderHub.Subscribe("order-1")
+		unsub()
+		_, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{MarketID: "BTC-USDT"})
+		unsubUser()
+	}
+	<-done
 }

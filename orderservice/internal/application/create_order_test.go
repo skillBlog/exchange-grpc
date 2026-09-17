@@ -3,11 +3,13 @@ package application_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/memory"
+	sharedgrpc "github.com/exchange-grpc/shared/grpc"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -67,6 +69,42 @@ func TestCreateOrder_success(t *testing.T) {
 	}
 	if saved.MarketID != "BTC-USDT" {
 		t.Fatalf("MarketID = %q, want BTC-USDT", saved.MarketID)
+	}
+}
+
+func TestCreateOrder_successAuditOmitsIdempotencyKey(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	core, logs := observer.New(zapcore.InfoLevel)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, nil, nil, nil, zap.New(core))
+
+	ctx := sharedgrpc.ContextWithRequestID(context.Background(), "req-order-1")
+	out, err := uc.Execute(ctx, application.CreateOrderInput{
+		UserID:         "11111111-1111-1111-1111-111111111111",
+		MarketID:       "BTC-USDT",
+		Side:           domain.OrderSideBuy,
+		Quantity:       mustDecimal(t, "0.1"),
+		IdempotencyKey: "secret-key",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	entries := logs.FilterMessage("order created").All()
+	if len(entries) != 1 {
+		t.Fatalf("audit logs = %d, want 1", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if got, _ := fields["order_id"].(string); got != out.OrderID {
+		t.Fatalf("order_id = %q, want %q", got, out.OrderID)
+	}
+	if got, _ := fields["user_id"].(string); got != "11111111-1111-1111-1111-111111111111" {
+		t.Fatalf("user_id = %q", got)
+	}
+	if got, _ := fields["request_id"].(string); got != "req-order-1" {
+		t.Fatalf("request_id = %q", got)
+	}
+	if _, ok := fields["idempotency_key"]; ok {
+		t.Fatal("idempotency_key must not be logged")
 	}
 }
 
@@ -140,10 +178,14 @@ func TestCreateOrder_inFlightIdempotencyKey(t *testing.T) {
 
 type createFailRepo struct {
 	*memory.OrderRepository
-	failOnce bool
+	failOnce  bool
+	createErr error
 }
 
 func (r *createFailRepo) Create(ctx context.Context, order domain.Order) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
 	if r.failOnce {
 		r.failOnce = false
 		return errors.New("db unavailable")
@@ -190,6 +232,9 @@ func TestCreateOrder_marketInactive(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrMarketInactive) {
 		t.Fatalf("error = %v, want ErrMarketInactive", err)
+	}
+	if !strings.Contains(err.Error(), "ensure market") {
+		t.Fatalf("error = %v, want wrap prefix", err)
 	}
 }
 
@@ -273,8 +318,8 @@ func TestCreateOrder_completeFailureDoesNotFailClient(t *testing.T) {
 	if got, _ := fields["user_id"].(string); got != "11111111-1111-1111-1111-111111111111" {
 		t.Fatalf("user_id = %q", got)
 	}
-	if got, _ := fields["idempotency_key"].(string); got != "key-complete-fail" {
-		t.Fatalf("idempotency_key = %q", got)
+	if _, ok := fields["idempotency_key"]; ok {
+		t.Fatal("idempotency_key must not be logged")
 	}
 	if _, ok := fields["error"]; !ok {
 		t.Fatal("expected error field in complete failure log")
@@ -373,5 +418,67 @@ func TestCreateOrder_acceptsQuantityAtMarketLimits(t *testing.T) {
 	}
 	if out.OrderID == "" {
 		t.Fatal("expected non-empty order id")
+	}
+}
+
+type failCtxStore struct {
+	inner         domain.IdempotencyStore
+	called        bool
+	failErrAtCall error
+}
+
+func (s *failCtxStore) GetOrderID(ctx context.Context, userID, key string) (string, bool, error) {
+	return s.inner.GetOrderID(ctx, userID, key)
+}
+
+func (s *failCtxStore) Reserve(ctx context.Context, userID, key, orderID string) (bool, string, error) {
+	return s.inner.Reserve(ctx, userID, key, orderID)
+}
+
+func (s *failCtxStore) Complete(ctx context.Context, userID, key string) error {
+	return s.inner.Complete(ctx, userID, key)
+}
+
+func (s *failCtxStore) Fail(ctx context.Context, userID, key string) error {
+	s.called = true
+	s.failErrAtCall = ctx.Err()
+	return s.inner.Fail(ctx, userID, key)
+}
+
+func TestCreateOrder_failUsesDetachedContext(t *testing.T) {
+	store := &failCtxStore{inner: memory.NewIdempotencyStore()}
+	uc := application.NewCreateOrder(
+		&createFailRepo{OrderRepository: memory.NewOrderRepository(), createErr: context.Canceled},
+		marketCheckerStub{},
+		store,
+		nil,
+		nil,
+		nil,
+	)
+
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	input := application.CreateOrderInput{
+		UserID:         "11111111-1111-1111-1111-111111111111",
+		MarketID:       "BTC-USDT",
+		Side:           domain.OrderSideBuy,
+		Quantity:       mustDecimal(t, "0.1"),
+		IdempotencyKey: "key-timeout",
+	}
+	_, err := uc.Execute(parent, input)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want Canceled", err)
+	}
+	if !store.called {
+		t.Fatal("expected Fail after create error")
+	}
+	if store.failErrAtCall != nil {
+		t.Fatalf("Fail ctx error = %v, want live detached context", store.failErrAtCall)
+	}
+
+	retry := application.NewCreateOrder(memory.NewOrderRepository(), marketCheckerStub{}, store.inner, nil, nil, nil)
+	if _, err := retry.Execute(context.Background(), input); err != nil {
+		t.Fatalf("retry after Fail error = %v", err)
 	}
 }

@@ -15,10 +15,31 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestStreamOrderUpdates_rejectsInvalidOrderIDWithoutAuth(t *testing.T) {
+func TestStreamOrderUpdates_requiresAuthBeforeValidate(t *testing.T) {
 	suite := integration.NewSuite(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	stream, err := suite.OrderClient.StreamOrderUpdates(ctx, &orderv1.StreamOrderUpdatesRequest{
+		OrderId: "not-a-uuid",
+	})
+	if err != nil {
+		if status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("handshake status = %v, want Unauthenticated", status.Code(err))
+		}
+		return
+	}
+	_, recvErr := stream.Recv()
+	if status.Code(recvErr) != codes.Unauthenticated {
+		t.Fatalf("recv status = %v, want Unauthenticated (jwt before recv)", status.Code(recvErr))
+	}
+}
+
+func TestStreamOrderUpdates_rejectsInvalidOrderIDWithAuth(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
 	defer cancel()
 
 	stream, err := suite.OrderClient.StreamOrderUpdates(ctx, &orderv1.StreamOrderUpdatesRequest{
@@ -32,7 +53,7 @@ func TestStreamOrderUpdates_rejectsInvalidOrderIDWithoutAuth(t *testing.T) {
 	}
 	_, recvErr := stream.Recv()
 	if status.Code(recvErr) != codes.InvalidArgument {
-		t.Fatalf("recv status = %v, want InvalidArgument (validate before jwt)", status.Code(recvErr))
+		t.Fatalf("recv status = %v, want InvalidArgument", status.Code(recvErr))
 	}
 }
 
@@ -134,6 +155,27 @@ func TestStreamUserOrderUpdates_rejectsInvalidMarketWithoutAuth(t *testing.T) {
 		MarketId: proto.String("btc-usdt"),
 	})
 	if err != nil {
+		if status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("handshake status = %v, want Unauthenticated", status.Code(err))
+		}
+		return
+	}
+	_, recvErr := stream.Recv()
+	if status.Code(recvErr) != codes.Unauthenticated {
+		t.Fatalf("recv status = %v, want Unauthenticated (jwt before recv)", status.Code(recvErr))
+	}
+}
+
+func TestStreamUserOrderUpdates_rejectsInvalidMarketWithAuth(t *testing.T) {
+	suite := integration.NewSuite(t)
+
+	ctx, cancel := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID), 3*time.Second)
+	defer cancel()
+
+	stream, err := suite.OrderClient.StreamUserOrderUpdates(ctx, &orderv1.StreamUserOrderUpdatesRequest{
+		MarketId: proto.String("btc-usdt"),
+	})
+	if err != nil {
 		if status.Code(err) != codes.InvalidArgument {
 			t.Fatalf("handshake status = %v, want InvalidArgument", status.Code(err))
 		}
@@ -141,7 +183,7 @@ func TestStreamUserOrderUpdates_rejectsInvalidMarketWithoutAuth(t *testing.T) {
 	}
 	_, recvErr := stream.Recv()
 	if status.Code(recvErr) != codes.InvalidArgument {
-		t.Fatalf("recv status = %v, want InvalidArgument (validate before jwt)", status.Code(recvErr))
+		t.Fatalf("recv status = %v, want InvalidArgument", status.Code(recvErr))
 	}
 }
 

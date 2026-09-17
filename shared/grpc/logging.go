@@ -88,12 +88,13 @@ func logRPCError(log *zap.Logger, msg string, err error, fields []zap.Field) {
 }
 
 // rpcErrorLogLevel отделяет ожидаемые клиентские ошибки от сбоев инфраструктуры.
-// Клиентские коды не должны выглядеть как Error — иначе их легко принять за
-// причину для circuit breaker.
+// Клиентские коды — Warn, чтобы их было видно, но не путать с падением сервиса.
 func rpcErrorLogLevel(code codes.Code) zapcore.Level {
 	switch code {
-	case codes.InvalidArgument, codes.NotFound, codes.PermissionDenied, codes.Unauthenticated:
-		return zapcore.DebugLevel
+	case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists,
+		codes.PermissionDenied, codes.Unauthenticated, codes.ResourceExhausted,
+		codes.FailedPrecondition, codes.Canceled, codes.DeadlineExceeded:
+		return zapcore.WarnLevel
 	case codes.Internal, codes.Unavailable, codes.DataLoss, codes.Unknown:
 		return zapcore.ErrorLevel
 	default:

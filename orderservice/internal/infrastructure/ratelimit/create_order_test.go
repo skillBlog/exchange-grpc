@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -54,5 +55,38 @@ func TestCreateOrderLimiter_deletesEmptyUserKeys(t *testing.T) {
 	}
 	if len(got.timestamps) != 1 || !got.timestamps[0].Equal(later) {
 		t.Fatalf("timestamps = %v, want [%v]", got.timestamps, later)
+	}
+}
+
+func TestCreateOrderLimiter_cancelledContextDoesNotCount(t *testing.T) {
+	limiter := NewCreateOrderLimiter(application.CreateOrderRateLimitConfig{
+		GlobalLimit:  1,
+		GlobalWindow: time.Minute,
+		BasicLimit:   1,
+		UserWindow:   time.Minute,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := limiter.Allow(ctx, "user-1", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Allow() error = %v, want Canceled", err)
+	}
+	if err := limiter.Allow(context.Background(), "user-1", nil); err != nil {
+		t.Fatalf("live Allow() error = %v", err)
+	}
+}
+
+func TestRedisCreateOrderLimiter_cancelledContextSkipsRedis(t *testing.T) {
+	limiter := NewRedisCreateOrderLimiter(nil, application.CreateOrderRateLimitConfig{
+		GlobalLimit:  1,
+		GlobalWindow: time.Minute,
+		BasicLimit:   1,
+		UserWindow:   time.Minute,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := limiter.Allow(ctx, "user-1", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Allow() error = %v", err)
 	}
 }

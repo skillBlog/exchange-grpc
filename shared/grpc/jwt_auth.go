@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"strings"
-	"sync"
 
 	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/sessionvalidation"
@@ -52,34 +51,12 @@ func NewStreamServerJWTAuth(tokens *sessionvalidation.TokenService, publicMethod
 		if _, skip := public[info.FullMethod]; skip {
 			return handler(srv, stream)
 		}
-		// JWT после RecvMsg, чтобы proto-validate успел отсечь невалидный запрос.
-		return handler(srv, &jwtAuthServerStream{ServerStream: stream, tokens: tokens})
+		enriched, err := enrichContextFromJWT(stream.Context(), tokens)
+		if err != nil {
+			return err
+		}
+		return handler(srv, &wrappedServerStream{ServerStream: stream, ctx: enriched})
 	}
-}
-
-type jwtAuthServerStream struct {
-	grpc.ServerStream
-	tokens  *sessionvalidation.TokenService
-	ctx     context.Context
-	once    sync.Once
-	authErr error
-}
-
-func (s *jwtAuthServerStream) RecvMsg(m any) error {
-	if err := s.ServerStream.RecvMsg(m); err != nil {
-		return err
-	}
-	s.once.Do(func() {
-		s.ctx, s.authErr = enrichContextFromJWT(s.ServerStream.Context(), s.tokens)
-	})
-	return s.authErr
-}
-
-func (s *jwtAuthServerStream) Context() context.Context {
-	if s.ctx != nil {
-		return s.ctx
-	}
-	return s.ServerStream.Context()
 }
 
 func enrichContextFromJWT(ctx context.Context, tokens *sessionvalidation.TokenService) (context.Context, error) {
@@ -104,7 +81,7 @@ func enrichContextFromJWT(ctx context.Context, tokens *sessionvalidation.TokenSe
 
 	claims, err := tokens.Validate(token)
 	if err != nil {
-		return ctx, status.Error(codes.Unauthenticated, "invalid or expired token")
+		return ctx, ToStatusError(err, "")
 	}
 
 	ctx = ContextWithUserID(ctx, claims.UserID)
@@ -112,19 +89,14 @@ func enrichContextFromJWT(ctx context.Context, tokens *sessionvalidation.TokenSe
 	return ctx, nil
 }
 
-// firstAuthorizationValue читает authorization metadata без зависимости от регистра ключа.
+// firstAuthorizationValue читает authorization через Get: gRPC нормализует ключи в нижний регистр.
 func firstAuthorizationValue(md metadata.MD) (string, bool) {
 	if md == nil {
 		return "", false
 	}
-	for key, values := range md {
-		if !strings.EqualFold(strings.TrimSpace(key), MetadataAuthorization) {
-			continue
-		}
-		for _, value := range values {
-			if trimmed := strings.TrimSpace(value); trimmed != "" {
-				return trimmed, true
-			}
+	for _, value := range md.Get(MetadataAuthorization) {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed, true
 		}
 	}
 	return "", false

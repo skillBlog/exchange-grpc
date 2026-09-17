@@ -3,6 +3,7 @@ package application_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/exchange-grpc/spotservice/internal/application"
@@ -52,6 +53,18 @@ func TestGetMarket_allowsRestrictedMarketWithRole(t *testing.T) {
 	}
 	if market.ID != "BNB-USDT" {
 		t.Fatalf("id = %q", market.ID)
+	}
+}
+
+func TestGetMarket_wrapsNotFound(t *testing.T) {
+	uc := application.NewGetMarket(memory.NewSeededMarketRepository(), nil)
+
+	_, err := uc.Execute(context.Background(), application.GetMarketInput{MarketID: "NOPE-USDT"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), "get market") {
+		t.Fatalf("error = %v, want wrap prefix", err)
 	}
 }
 

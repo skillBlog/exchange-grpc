@@ -3,6 +3,7 @@ package application_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +39,9 @@ func TestCreateOrder_rateLimited(t *testing.T) {
 	_, err := uc.Execute(context.Background(), input)
 	if !errors.Is(err, domain.ErrRateLimited) {
 		t.Fatalf("second error = %v, want ErrRateLimited", err)
+	}
+	if !strings.Contains(err.Error(), "create order rate limit") {
+		t.Fatalf("error = %v, want wrap prefix", err)
 	}
 }
 

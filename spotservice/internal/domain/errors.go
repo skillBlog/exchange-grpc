@@ -9,6 +9,3 @@ var (
 	ErrForbidden          = sharederrors.ErrForbidden
 	ErrRateLimited        = sharederrors.ErrRateLimited
 )
-
-// ErrMarketInactive — доменный алиас для неактивного рынка (failed precondition).
-var ErrMarketInactive = ErrFailedPrecondition
