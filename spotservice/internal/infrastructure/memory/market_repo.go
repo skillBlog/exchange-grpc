@@ -25,13 +25,13 @@ func NewMarketRepository(markets ...domain.Market) *MarketRepository {
 	return &MarketRepository{markets: store}
 }
 
-// GetByID возвращает рынок по идентификатору независимо от активности.
-func (r *MarketRepository) GetByID(_ context.Context, id string) (domain.Market, error) {
+// GetByID возвращает рынок по идентификатору, если он доступен ролям пользователя.
+func (r *MarketRepository) GetByID(_ context.Context, id string, userRoles []string) (domain.Market, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	market, ok := r.markets[id]
-	if !ok {
+	if !ok || !market.IsAccessibleBy(userRoles) {
 		return domain.Market{}, fmt.Errorf("%w: market %q", domain.ErrNotFound, id)
 	}
 	return market, nil
@@ -75,29 +75,26 @@ func (r *MarketRepository) Ping(context.Context) error {
 	return nil
 }
 
-func mustMarket(id, name, base, quote string, enabled bool, allowedRoles ...string) domain.Market {
-	market, err := domain.NewMarket(id, name, base, quote, enabled, allowedRoles)
+func mustMarket(id, name, base, quote string, enabled bool, minOrderSize string, quantityPrecision uint32, minNotional string, allowedRoles ...string) domain.Market {
+	market, err := domain.NewMarket(id, name, base, quote, enabled, allowedRoles, domain.Limits{
+		MinOrderSize:      minOrderSize,
+		QuantityPrecision: quantityPrecision,
+		MinNotional:       minNotional,
+	})
 	if err != nil {
 		panic(err)
 	}
 	return market
 }
 
-func withLimits(market domain.Market, minOrderSize string, quantityPrecision uint32, minNotional string) domain.Market {
-	market.MinOrderSize = minOrderSize
-	market.QuantityPrecision = quantityPrecision
-	market.MinNotional = minNotional
-	return market
-}
-
 // SeedMarkets возвращает набор рынков: активные и отключённые.
 func SeedMarkets() []domain.Market {
 	return []domain.Market{
-		withLimits(mustMarket("BTC-USDT", "Bitcoin / Tether", "BTC", "USDT", true), "0.0001", 8, "10"),
-		withLimits(mustMarket("ETH-USDT", "Ethereum / Tether", "ETH", "USDT", true), "0.001", 8, "10"),
-		withLimits(mustMarket("BNB-USDT", "BNB / Tether", "BNB", "USDT", true, "trader", "admin"), "0.01", 6, "10"),
-		withLimits(mustMarket("SOL-USDT", "Solana / Tether", "SOL", "USDT", false), "0.01", 4, "10"),
-		withLimits(mustMarket("XRP-USDT", "Ripple / Tether", "XRP", "USDT", false), "1", 2, "10"),
+		mustMarket("BTC-USDT", "Bitcoin / Tether", "BTC", "USDT", true, "0.0001", 8, "10"),
+		mustMarket("ETH-USDT", "Ethereum / Tether", "ETH", "USDT", true, "0.001", 8, "10"),
+		mustMarket("BNB-USDT", "BNB / Tether", "BNB", "USDT", true, "0.01", 6, "10", "trader", "admin"),
+		mustMarket("SOL-USDT", "Solana / Tether", "SOL", "USDT", false, "0.01", 4, "10"),
+		mustMarket("XRP-USDT", "Ripple / Tether", "XRP", "USDT", false, "1", 2, "10"),
 	}
 }
 

@@ -2,6 +2,7 @@ package logger_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/exchange-grpc/shared/logger"
 	"go.uber.org/zap"
@@ -37,6 +38,9 @@ func TestServeLevelAdmin_shutdown(t *testing.T) {
 	srv := logger.ServeLevelAdmin("127.0.0.1:0", level, logger.NewNop())
 	if srv == nil {
 		t.Fatal("expected http server")
+	}
+	if srv.ReadHeaderTimeout != 5*time.Second {
+		t.Fatalf("ReadHeaderTimeout = %v, want 5s", srv.ReadHeaderTimeout)
 	}
 	logger.ShutdownLevelAdmin(srv, logger.NewNop())
 }

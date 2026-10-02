@@ -36,29 +36,39 @@ type CreateOrder struct {
 	orders      domain.OrderRepository
 	markets     MarketChecker
 	idempotency domain.IdempotencyStore
-	notifier    OrderNotifier
+	tx          TxManager
+	outbox      OutboxStore
 	limiter     CreateOrderRateLimiter
 	log         *zap.Logger
 	now         func() time.Time
 }
 
 // NewCreateOrder создаёт use case CreateOrder.
+// tx и outbox могут быть nil: тогда WithinTx — passthrough, Append — no-op (тесты).
 func NewCreateOrder(
 	orders domain.OrderRepository,
 	markets MarketChecker,
 	idempotency domain.IdempotencyStore,
-	notifier OrderNotifier,
+	tx TxManager,
+	outbox OutboxStore,
 	limiter CreateOrderRateLimiter,
 	log *zap.Logger,
 ) *CreateOrder {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	if tx == nil {
+		tx = nopTxManager{}
+	}
+	if outbox == nil {
+		outbox = nopOutbox{}
+	}
 	return &CreateOrder{
 		orders:      orders,
 		markets:     markets,
 		idempotency: idempotency,
-		notifier:    notifier,
+		tx:          tx,
+		outbox:      outbox,
 		limiter:     limiter,
 		log:         log,
 		now:         time.Now,
@@ -158,7 +168,22 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 	}
 
 	if err = tracing.Run(ctx, "order.CreateOrder.insert", func(ctx context.Context) error {
-		return uc.orders.Create(ctx, order)
+		return uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+			if createErr := uc.orders.Create(ctx, order); createErr != nil {
+				return createErr
+			}
+			event, eventErr := newOrderOutboxEvent(EventTypeOrderCreated, UpdateEvent{
+				OrderID:   order.ID,
+				UserID:    order.UserID,
+				MarketID:  order.MarketID,
+				Status:    order.Status,
+				UpdatedAt: order.UpdatedAt,
+			})
+			if eventErr != nil {
+				return eventErr
+			}
+			return uc.outbox.Append(ctx, event)
+		})
 	}); err != nil {
 		if idempotencyKey != "" && uc.idempotency != nil {
 			failCtx, cancelFail := context.WithTimeout(context.WithoutCancel(ctx), idempotencyCleanupTimeout)
@@ -183,16 +208,6 @@ func (uc *CreateOrder) Execute(ctx context.Context, input CreateOrderInput) (out
 				zap.Error(completeErr),
 			)
 		}
-	}
-
-	if uc.notifier != nil {
-		uc.notifier.Publish(UpdateEvent{
-			OrderID:   order.ID,
-			UserID:    order.UserID,
-			MarketID:  order.MarketID,
-			Status:    order.Status,
-			UpdatedAt: order.UpdatedAt,
-		})
 	}
 
 	logAudit(ctx, uc.log, "order created", order.UserID,

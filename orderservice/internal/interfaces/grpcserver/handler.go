@@ -62,7 +62,7 @@ func (s *Server) GetOrderStatus(ctx context.Context, req *orderv1.GetOrderStatus
 	}
 
 	order, err := s.getOrderStatus.Execute(ctx, application.GetOrderStatusInput{
-		OrderID: normalizeOrderID(req.GetOrderId()),
+		OrderID: req.GetOrderId(),
 		UserID:  userID,
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func (s *Server) StreamOrderUpdates(req *orderv1.StreamOrderUpdatesRequest, stre
 	}
 
 	err := s.streamOrderUpdates.Execute(stream.Context(), application.StreamOrderUpdatesInput{
-		OrderID: normalizeOrderID(req.GetOrderId()),
+		OrderID: req.GetOrderId(),
 		UserID:  userID,
 	}, func(update application.UpdateEvent) error {
 		return stream.Send(orderUpdateToProto(update))

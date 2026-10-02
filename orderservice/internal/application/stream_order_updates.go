@@ -26,7 +26,9 @@ func NewStreamOrderUpdates(orders domain.OrderRepository, hub OrderUpdateHub) *S
 	return &StreamOrderUpdates{orders: orders, hub: hub}
 }
 
-// Execute отправляет текущий статус, затем стримит обновления из hub до финального статуса или отмены контекста.
+// Execute отправляет текущий статус, затем стримит live-обновления из hub
+// (Kafka consumer при настроенном брокере) до финального статуса или отмены контекста.
+// По контракту hub: unsubscribe при выходе, канал не закрываем.
 func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpdatesInput, send func(UpdateEvent) error) (err error) {
 	ctx, span := tracing.Start(ctx, "order.StreamOrderUpdates",
 		tracing.Attr("order.id", strings.TrimSpace(input.OrderID)),

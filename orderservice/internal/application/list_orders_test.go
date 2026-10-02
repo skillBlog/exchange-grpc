@@ -184,7 +184,7 @@ func TestListOrders_filtersByStatus(t *testing.T) {
 	if err := repo.Create(context.Background(), filled); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if err := repo.UpdateStatus(context.Background(), filled.ID, domain.OrderStatusFilled, now.Add(2*time.Second)); err != nil {
+	if err := repo.UpdateStatus(context.Background(), filled.ID, domain.OrderStatusCreated, domain.OrderStatusFilled, now.Add(2*time.Second)); err != nil {
 		t.Fatalf("UpdateStatus() error = %v", err)
 	}
 

@@ -11,14 +11,9 @@ import (
 
 const minPasswordLength = 8
 
-// NormalizeEmail приводит email к каноническому виду.
-func NormalizeEmail(email string) string {
-	return strings.TrimSpace(strings.ToLower(email))
-}
-
 // ValidateEmail проверяет формат email.
 func ValidateEmail(email string) error {
-	email = NormalizeEmail(email)
+	email = domain.NormalizeEmail(email)
 	if email == "" {
 		return fmt.Errorf("%w: email is required", domain.ErrInvalidArgument)
 	}

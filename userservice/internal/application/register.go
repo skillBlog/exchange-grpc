@@ -59,7 +59,7 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 	ctx, span := tracing.Start(ctx, "user.Register")
 	defer tracing.End(span, &err)
 
-	email := NormalizeEmail(input.Email)
+	email := domain.NormalizeEmail(input.Email)
 	password := strings.TrimSpace(input.Password)
 	if err = ValidateEmail(email); err != nil {
 		return RegisterOutput{}, err
@@ -78,8 +78,8 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 		return RegisterOutput{}, err
 	}
 
-	if err = uc.users.Save(ctx, user); err != nil {
-		return RegisterOutput{}, fmt.Errorf("save user: %w", err)
+	if err = uc.users.Create(ctx, user); err != nil {
+		return RegisterOutput{}, fmt.Errorf("create user: %w", err)
 	}
 	span.SetAttributes(tracing.Attr("user_id", user.ID))
 

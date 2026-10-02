@@ -28,6 +28,7 @@ func defaultErrorMappings(rateLimitedMessage string) []ErrorMapping {
 		{Sentinel: sessionvalidation.ErrInvalidToken, Code: codes.Unauthenticated},
 		{Sentinel: sharederrors.ErrAlreadyExists, Code: codes.AlreadyExists},
 		{Sentinel: sharederrors.ErrFailedPrecondition, Code: codes.FailedPrecondition},
+		{Sentinel: sharederrors.ErrConflict, Code: codes.FailedPrecondition},
 		{Sentinel: sharederrors.ErrRateLimited, Code: codes.ResourceExhausted, Message: rateLimitedMessage},
 	}
 }

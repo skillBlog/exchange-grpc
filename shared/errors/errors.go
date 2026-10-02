@@ -10,5 +10,6 @@ var (
 	ErrUnauthorized       = errors.New("unauthorized")
 	ErrAlreadyExists      = errors.New("already exists")
 	ErrFailedPrecondition = errors.New("failed precondition")
+	ErrConflict           = errors.New("conflict")
 	ErrRateLimited        = errors.New("rate limited")
 )

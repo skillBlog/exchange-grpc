@@ -138,11 +138,24 @@ func TestMemoryRefreshTokenStore_RotateConcurrentOnlyOneSucceeds(t *testing.T) {
 		t.Fatalf("successful rotates = %d, want 1", got)
 	}
 
-	stored, err := store.GetByTokenHash(ctx, "hash-old")
-	if err != nil {
-		t.Fatalf("GetByTokenHash(old) error = %v", err)
+	if _, err := store.GetByTokenHash(ctx, "hash-old"); !errors.Is(err, sharederrors.ErrUnauthorized) {
+		t.Fatalf("GetByTokenHash(old) error = %v, want ErrUnauthorized", err)
 	}
-	if stored.IsActive(now) {
-		t.Fatal("old token must be revoked after rotate")
+
+	active := 0
+	for i := 0; i < n; i++ {
+		stored, err := store.GetByTokenHash(ctx, fmt.Sprintf("hash-new-%d", i))
+		if errors.Is(err, sharederrors.ErrUnauthorized) {
+			continue
+		}
+		if err != nil {
+			t.Fatalf("GetByTokenHash(new-%d) error = %v", i, err)
+		}
+		if stored.IsActive(now) {
+			active++
+		}
+	}
+	if active != 1 {
+		t.Fatalf("active rotated tokens = %d, want 1", active)
 	}
 }

@@ -6,6 +6,7 @@ var (
 	ErrNotFound           = sharederrors.ErrNotFound
 	ErrInvalidArgument    = sharederrors.ErrInvalidArgument
 	ErrFailedPrecondition = sharederrors.ErrFailedPrecondition
+	ErrConflict           = sharederrors.ErrConflict
 	ErrForbidden          = sharederrors.ErrForbidden
 	ErrAlreadyExists      = sharederrors.ErrAlreadyExists
 	ErrRateLimited        = sharederrors.ErrRateLimited

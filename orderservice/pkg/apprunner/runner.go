@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
+	orderkafka "github.com/exchange-grpc/orderservice/internal/infrastructure/kafka"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/postgres"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/ratelimit"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/spotclient"
@@ -103,6 +104,8 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	marketClient := spotclient.New(spotConn, r.cfg.SpotGRPCTimeout)
 	orderRepo := postgres.NewOrderRepository(db)
 	idempotencyStore := postgres.NewIdempotencyStore(db, r.cfg.IdempotencyTTL)
+	txManager := postgres.NewTxManager(db)
+	outboxStore := postgres.NewOutboxStore(db)
 
 	rateLimitCfg := application.CreateOrderRateLimitConfig{
 		GlobalLimit:  r.cfg.CreateOrderRateLimit.GlobalLimit,
@@ -133,8 +136,49 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		log.Info("create order rate limiter uses redis", zap.String("redis_url", r.cfg.RedisURL))
 	}
 
-	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, r.cfg.OrderHubBufferSize, r.cfg.OrderHubPublishTimeout, log)
+	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, txManager, outboxStore, r.cfg.OrderHubBufferSize, r.cfg.OrderHubPublishTimeout, log)
 	server := grpcserver.NewServer(orderServices)
+
+	var (
+		orderPublisher application.OrderEventPublisher
+		kafkaProducer  *orderkafka.Producer
+	)
+	if len(r.cfg.KafkaBrokers) > 0 {
+		kafkaProducer = orderkafka.NewProducer(r.cfg.KafkaBrokers, r.cfg.KafkaOrderTopic, r.cfg.KafkaProduceTimeout)
+		defer func() { _ = kafkaProducer.Close() }()
+		orderPublisher = kafkaProducer
+		kafkaConsumer := orderkafka.NewConsumer(r.cfg.KafkaBrokers, r.cfg.KafkaOrderTopic, "", orderServices.Hub, log)
+		go kafkaConsumer.Run(runCtx)
+		log.Info("outbox relay publishes to kafka; streams consume via hub",
+			zap.Strings("brokers", r.cfg.KafkaBrokers),
+			zap.String("topic", r.cfg.KafkaOrderTopic),
+		)
+		if r.cfg.KafkaCommandTopic != "" {
+			inboxStore := postgres.NewInboxStore(db)
+			dlq := orderkafka.NewDeadLetterPublisher(r.cfg.KafkaBrokers, r.cfg.KafkaCommandDLQTopic, r.cfg.KafkaProduceTimeout)
+			defer func() { _ = dlq.Close() }()
+			apply := application.NewApplyOrderCommand(txManager, inboxStore, orderServices.UpdateOrderStatus)
+			cmdConsumer := orderkafka.NewCommandConsumer(
+				r.cfg.KafkaBrokers,
+				r.cfg.KafkaCommandTopic,
+				r.cfg.KafkaCommandGroup,
+				apply,
+				dlq,
+				r.cfg.KafkaCommandMaxAttempts,
+				log,
+			)
+			go cmdConsumer.Run(runCtx)
+			log.Info("command consumer reads matching-engine commands",
+				zap.String("topic", r.cfg.KafkaCommandTopic),
+				zap.String("dlq_topic", r.cfg.KafkaCommandDLQTopic),
+				zap.String("group", r.cfg.KafkaCommandGroup),
+			)
+		}
+	} else {
+		log.Warn("KAFKA_BROKERS is empty, outbox relay publishes to in-memory hub only")
+	}
+
+	go application.NewOutboxRelay(txManager, outboxStore, orderServices.Hub, orderPublisher, log, 0, 0).Run(runCtx)
 
 	grpcServer := googlegrpc.NewServer(
 		googlegrpc.StatsHandler(otelgrpc.NewServerHandler()),
@@ -165,6 +209,9 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	var optionalChecks []sharedhealth.Checker
 	if redisClient != nil {
 		optionalChecks = append(optionalChecks, redisClient.Ping)
+	}
+	if kafkaProducer != nil {
+		optionalChecks = append(optionalChecks, kafkaProducer.Ping)
 	}
 	healthWatcher := sharedhealth.NewWatcher(
 		healthServer,

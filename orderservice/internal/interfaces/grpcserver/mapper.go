@@ -2,7 +2,6 @@ package grpcserver
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
@@ -122,8 +121,4 @@ func orderUpdateToProto(update application.UpdateEvent) *orderv1.OrderUpdate {
 		msg.UpdatedAt = timestamppb.New(update.UpdatedAt)
 	}
 	return msg
-}
-
-func normalizeOrderID(orderID string) string {
-	return strings.TrimSpace(orderID)
 }

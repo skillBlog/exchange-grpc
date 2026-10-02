@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	sharedgrpc "github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/shared/tracing"
@@ -16,12 +15,9 @@ import (
 const (
 	loginFailReasonUserNotFound = "user-not-found"
 	loginFailReasonBadPassword  = "bad-password"
-	timingDummyPassword         = "timing-dummy"
-)
-
-var (
-	dummyHashOnce sync.Once
-	dummyHash     string
+	// dummyPasswordHash — заранее посчитанный bcrypt (cost 12).
+	// Compare всегда выполняется для неизвестного email, без генерации хеша на запросе.
+	dummyPasswordHash = "$2a$12$XajjQvNhvvRt5GSeYdXdTeMJ2zdnCjC9tLgGdR6vsB1CKR65TpX0W"
 )
 
 // LoginInput — параметры входа пользователя.
@@ -74,7 +70,7 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 	ctx, span := tracing.Start(ctx, "user.Login")
 	defer tracing.End(span, &err)
 
-	email := NormalizeEmail(input.Email)
+	email := domain.NormalizeEmail(input.Email)
 	password := strings.TrimSpace(input.Password)
 	if err = ValidateEmail(email); err != nil {
 		return LoginOutput{}, err
@@ -127,22 +123,7 @@ func (uc *Login) Execute(ctx context.Context, input LoginInput) (out LoginOutput
 }
 
 func (uc *Login) compareDummy(ctx context.Context, password string) {
-	hash := uc.dummyPasswordHash(ctx)
-	if hash == "" {
-		return
-	}
-	_ = comparePassword(ctx, uc.hasher, hash, password)
-}
-
-func (uc *Login) dummyPasswordHash(ctx context.Context) string {
-	dummyHashOnce.Do(func() {
-		hash, err := hashPassword(ctx, uc.hasher, timingDummyPassword)
-		if err != nil {
-			return
-		}
-		dummyHash = hash
-	})
-	return dummyHash
+	_ = comparePassword(ctx, uc.hasher, dummyPasswordHash, password)
 }
 
 func (uc *Login) logFailedLogin(ctx context.Context, email, clientAddr, reason string) {

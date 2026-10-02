@@ -94,7 +94,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		return fmt.Errorf("init proto validator: %w", err)
 	}
 
-	marketRepo := cache.NewMarketRepository(postgres.NewMarketRepository(db), r.cfg.MarketCacheTTL)
+	marketRepo := cache.NewMarketRepository(postgres.NewMarketRepository(db), r.cfg.MarketCacheTTL, log)
 
 	var viewMarketsLimiter application.ViewMarketsRateLimiter
 	var redisClient *sharedredis.Client
@@ -112,7 +112,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		viewMarketsLimiter = ratelimit.NewViewMarketsLimiter(r.cfg.ViewMarketsRateLimit, r.cfg.ViewMarketsRateWindow)
 	} else {
 		defer redisClient.Close()
-		viewMarketsLimiter = ratelimit.NewRedisViewMarketsLimiter(redisClient.Raw(), r.cfg.ViewMarketsRateLimit, r.cfg.ViewMarketsRateWindow)
+		viewMarketsLimiter = ratelimit.NewRedisViewMarketsLimiter(redisClient.Raw(), r.cfg.ViewMarketsRateLimit, r.cfg.ViewMarketsRateWindow, log)
 		log.Info("view markets rate limiter uses redis", zap.String("redis_url", r.cfg.RedisURL))
 	}
 
@@ -143,13 +143,19 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		return fmt.Errorf("listen %s: %w", r.cfg.GRPCAddr, err)
 	}
 
+	criticalChecks := []sharedhealth.Checker{db.Ping}
+	var optionalChecks []sharedhealth.Checker
+	if redisClient != nil {
+		optionalChecks = append(optionalChecks, redisClient.Ping)
+	}
 	healthWatcher := sharedhealth.NewWatcher(
 		healthServer,
 		spotv1.SpotService_ServiceDesc.ServiceName,
 		10*time.Second,
 		r.cfg.HealthCheckTimeout,
 		log,
-		[]sharedhealth.Checker{db.Ping},
+		criticalChecks,
+		optionalChecks...,
 	)
 	if err := healthWatcher.Check(runCtx); err != nil {
 		_ = listener.Close()

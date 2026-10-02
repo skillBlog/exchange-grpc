@@ -49,8 +49,8 @@ func TestCreateOrder_RejectsForbiddenMarket(t *testing.T) {
 		Side:     commonv1.OrderSide_ORDER_SIDE_BUY,
 		Quantity: &commonv1.Decimal{Value: "1"},
 	})
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("status = %v, want PermissionDenied", status.Code(err))
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("status = %v, want NotFound", status.Code(err))
 	}
 
 	ctxTrader, cancelTrader := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID, "trader"), 3*time.Second)
@@ -76,8 +76,8 @@ func TestGetMarket_RejectsForbiddenMarket(t *testing.T) {
 	defer cancel()
 
 	_, err := suite.SpotClient.GetMarket(ctx, &spotv1.GetMarketRequest{MarketId: "BNB-USDT"})
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("status = %v, want PermissionDenied", status.Code(err))
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("status = %v, want NotFound", status.Code(err))
 	}
 
 	ctxTrader, cancelTrader := context.WithTimeout(integration.AuthContext(context.Background(), integration.TestUserID, "trader"), 3*time.Second)

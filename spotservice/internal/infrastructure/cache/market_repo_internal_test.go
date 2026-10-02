@@ -10,17 +10,21 @@ import (
 
 	"github.com/exchange-grpc/spotservice/internal/domain"
 	"github.com/exchange-grpc/spotservice/internal/infrastructure/memory"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type countingMarketRepo struct {
-	inner   domain.MarketRepository
-	calls   atomic.Int32
-	blockID string
-	started chan struct{}
-	release chan struct{}
+	inner     domain.MarketRepository
+	calls     atomic.Int32
+	blockID   string
+	started   chan struct{}
+	release   chan struct{}
+	returnErr error
 }
 
-func (r *countingMarketRepo) GetByID(ctx context.Context, id string) (domain.Market, error) {
+func (r *countingMarketRepo) GetByID(ctx context.Context, id string, userRoles []string) (domain.Market, error) {
 	r.calls.Add(1)
 	if r.blockID != "" && id == r.blockID {
 		if r.started != nil {
@@ -37,7 +41,10 @@ func (r *countingMarketRepo) GetByID(ctx context.Context, id string) (domain.Mar
 			}
 		}
 	}
-	return r.inner.GetByID(ctx, id)
+	if r.returnErr != nil {
+		return domain.Market{}, r.returnErr
+	}
+	return r.inner.GetByID(ctx, id, userRoles)
 }
 
 func (r *countingMarketRepo) ListActivePage(ctx context.Context, userRoles []string, limit int, afterID string) ([]domain.Market, error) {
@@ -53,8 +60,8 @@ type delayClockRepo struct {
 	advance func()
 }
 
-func (r delayClockRepo) GetByID(ctx context.Context, id string) (domain.Market, error) {
-	market, err := r.inner.GetByID(ctx, id)
+func (r delayClockRepo) GetByID(ctx context.Context, id string, userRoles []string) (domain.Market, error) {
+	market, err := r.inner.GetByID(ctx, id, userRoles)
 	if r.advance != nil {
 		r.advance()
 	}
@@ -71,7 +78,7 @@ func (r delayClockRepo) Ping(ctx context.Context) error {
 
 func TestMarketRepository_singleflightCoalescesMisses(t *testing.T) {
 	inner := &countingMarketRepo{inner: memory.NewSeededMarketRepository()}
-	repo := NewMarketRepository(inner, time.Minute)
+	repo := NewMarketRepository(inner, time.Minute, nil)
 
 	const n = 8
 	var wg sync.WaitGroup
@@ -79,7 +86,7 @@ func TestMarketRepository_singleflightCoalescesMisses(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+			if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); err != nil {
 				t.Errorf("GetByID() error = %v", err)
 			}
 		}()
@@ -101,10 +108,10 @@ func TestMarketRepository_ttlStartsAfterSuccessfulRead(t *testing.T) {
 			},
 		},
 	}
-	repo := NewMarketRepository(inner, 30*time.Second)
+	repo := NewMarketRepository(inner, 30*time.Second, nil)
 	repo.now = func() time.Time { return clock }
 
-	if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
 	if inner.calls.Load() != 1 {
@@ -112,7 +119,7 @@ func TestMarketRepository_ttlStartsAfterSuccessfulRead(t *testing.T) {
 	}
 
 	clock = time.Date(2026, 1, 1, 12, 0, 32, 0, time.UTC)
-	if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); err != nil {
 		t.Fatalf("GetByID() at T+32s error = %v", err)
 	}
 	if inner.calls.Load() != 1 {
@@ -120,7 +127,7 @@ func TestMarketRepository_ttlStartsAfterSuccessfulRead(t *testing.T) {
 	}
 
 	clock = time.Date(2026, 1, 1, 12, 0, 36, 0, time.UTC)
-	if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); err != nil {
 		t.Fatalf("GetByID() at T+36s error = %v", err)
 	}
 	if inner.calls.Load() != 2 {
@@ -135,12 +142,12 @@ func TestMarketRepository_doesNotHoldLockDuringInnerFetch(t *testing.T) {
 		started: make(chan struct{}, 1),
 		release: make(chan struct{}),
 	}
-	repo := NewMarketRepository(inner, time.Minute)
+	repo := NewMarketRepository(inner, time.Minute, nil)
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+		if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); err != nil {
 			t.Errorf("blocked GetByID() error = %v", err)
 		}
 	}()
@@ -154,7 +161,7 @@ func TestMarketRepository_doesNotHoldLockDuringInnerFetch(t *testing.T) {
 	ethDone := make(chan struct{})
 	go func() {
 		defer close(ethDone)
-		if _, err := repo.GetByID(context.Background(), "ETH-USDT"); err != nil {
+		if _, err := repo.GetByID(context.Background(), "ETH-USDT", nil); err != nil {
 			t.Errorf("ETH GetByID() error = %v", err)
 		}
 	}()
@@ -175,10 +182,10 @@ func TestMarketRepository_doesNotHoldLockDuringInnerFetch(t *testing.T) {
 
 func TestMarketRepository_evictsExpiredEntries(t *testing.T) {
 	clock := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	repo := NewMarketRepository(memory.NewSeededMarketRepository(), 30*time.Second)
+	repo := NewMarketRepository(memory.NewSeededMarketRepository(), 30*time.Second, nil)
 	repo.now = func() time.Time { return clock }
 
-	if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
 	if repo.cachedCount() != 1 {
@@ -186,7 +193,7 @@ func TestMarketRepository_evictsExpiredEntries(t *testing.T) {
 	}
 
 	clock = clock.Add(31 * time.Second)
-	if _, err := repo.GetByID(context.Background(), "BTC-USDT"); err != nil {
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); err != nil {
 		t.Fatalf("GetByID() after TTL error = %v", err)
 	}
 	if repo.cachedCount() != 1 {
@@ -201,13 +208,13 @@ func TestMarketRepository_canceledCallerDoesNotWaitForInner(t *testing.T) {
 		started: make(chan struct{}, 1),
 		release: make(chan struct{}),
 	}
-	repo := NewMarketRepository(inner, time.Minute)
+	repo := NewMarketRepository(inner, time.Minute, nil)
 	repo.fetchTimeout = time.Hour
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := repo.GetByID(ctx, "BTC-USDT")
+		_, err := repo.GetByID(ctx, "BTC-USDT", nil)
 		errCh <- err
 	}()
 
@@ -229,3 +236,199 @@ func TestMarketRepository_canceledCallerDoesNotWaitForInner(t *testing.T) {
 
 	close(inner.release)
 }
+
+func TestMarketRepository_doesNotShareCacheAcrossRoles(t *testing.T) {
+	inner := &countingMarketRepo{inner: memory.NewSeededMarketRepository()}
+	repo := NewMarketRepository(inner, time.Minute, nil)
+
+	if _, err := repo.GetByID(context.Background(), "BNB-USDT", []string{"trader"}); err != nil {
+		t.Fatalf("trader GetByID() error = %v", err)
+	}
+	_, err := repo.GetByID(context.Background(), "BNB-USDT", nil)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("user GetByID() error = %v, want ErrNotFound", err)
+	}
+	if got := inner.calls.Load(); got != 2 {
+		t.Fatalf("inner GetByID calls = %d, want 2", got)
+	}
+
+	if _, err := repo.GetByID(context.Background(), "BNB-USDT", []string{"Trader"}); err != nil {
+		t.Fatalf("canonical trader GetByID() error = %v", err)
+	}
+	if got := inner.calls.Load(); got != 2 {
+		t.Fatalf("inner GetByID calls after alias role = %d, want 2", got)
+	}
+}
+
+func TestMarketRepository_logsUnexpectedInnerError(t *testing.T) {
+	innerErr := errors.New("db timeout")
+	core, logs := observer.New(zapcore.ErrorLevel)
+	repo := NewMarketRepository(errorMarketRepo{err: innerErr}, time.Minute, zap.New(core))
+
+	_, err := repo.GetByID(context.Background(), "BTC-USDT", nil)
+	if !errors.Is(err, innerErr) {
+		t.Fatalf("error = %v, want %v", err, innerErr)
+	}
+
+	entries := logs.FilterMessage("market cache get by id failed").All()
+	if len(entries) != 1 {
+		t.Fatalf("error logs = %d, want 1", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if got, _ := fields["market_id"].(string); got != "BTC-USDT" {
+		t.Fatalf("market_id = %q", got)
+	}
+}
+
+func TestMarketRepository_doesNotLogNotFound(t *testing.T) {
+	core, logs := observer.New(zapcore.ErrorLevel)
+	repo := NewMarketRepository(memory.NewSeededMarketRepository(), time.Minute, zap.New(core))
+
+	_, err := repo.GetByID(context.Background(), "NOPE-USDT", nil)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if n := logs.FilterMessage("market cache get by id failed").Len(); n != 0 {
+		t.Fatalf("error logs = %d, want 0", n)
+	}
+}
+
+func TestMarketRepository_cachesNotFound(t *testing.T) {
+	inner := &countingMarketRepo{inner: memory.NewSeededMarketRepository()}
+	repo := NewMarketRepository(inner, time.Minute, nil)
+	repo.negativeTTL = time.Minute
+
+	for i := 0; i < 3; i++ {
+		_, err := repo.GetByID(context.Background(), "NOPE-USDT", nil)
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("call %d: error = %v, want ErrNotFound", i, err)
+		}
+	}
+	if got := inner.calls.Load(); got != 1 {
+		t.Fatalf("inner GetByID calls = %d, want 1", got)
+	}
+}
+
+func TestMarketRepository_cachesInnerError(t *testing.T) {
+	innerErr := errors.New("db timeout")
+	inner := &countingMarketRepo{returnErr: innerErr}
+	core, logs := observer.New(zapcore.ErrorLevel)
+	repo := NewMarketRepository(inner, time.Minute, zap.New(core))
+	repo.negativeTTL = time.Minute
+
+	for i := 0; i < 3; i++ {
+		_, err := repo.GetByID(context.Background(), "BTC-USDT", nil)
+		if !errors.Is(err, innerErr) {
+			t.Fatalf("call %d: error = %v, want %v", i, err, innerErr)
+		}
+	}
+	if got := inner.calls.Load(); got != 1 {
+		t.Fatalf("inner GetByID calls = %d, want 1", got)
+	}
+	if n := logs.FilterMessage("market cache get by id failed").Len(); n != 1 {
+		t.Fatalf("error logs = %d, want 1", n)
+	}
+}
+
+func TestMarketRepository_negativeTTLExpires(t *testing.T) {
+	clock := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	inner := &countingMarketRepo{inner: memory.NewSeededMarketRepository()}
+	repo := NewMarketRepository(inner, time.Minute, nil)
+	repo.now = func() time.Time { return clock }
+	repo.negativeTTL = 5 * time.Second
+
+	if _, err := repo.GetByID(context.Background(), "NOPE-USDT", nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+
+	clock = clock.Add(4 * time.Second)
+	if _, err := repo.GetByID(context.Background(), "NOPE-USDT", nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if got := inner.calls.Load(); got != 1 {
+		t.Fatalf("calls within negative TTL = %d, want 1", got)
+	}
+
+	clock = clock.Add(2 * time.Second)
+	if _, err := repo.GetByID(context.Background(), "NOPE-USDT", nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if got := inner.calls.Load(); got != 2 {
+		t.Fatalf("calls after negative TTL = %d, want 2", got)
+	}
+}
+
+func TestMarketRepository_logsInnerErrorAfterCallerCancel(t *testing.T) {
+	innerErr := errors.New("db timeout")
+	inner := &countingMarketRepo{
+		inner:     memory.NewSeededMarketRepository(),
+		blockID:   "BTC-USDT",
+		started:   make(chan struct{}, 1),
+		release:   make(chan struct{}),
+		returnErr: innerErr,
+	}
+	core, logs := observer.New(zapcore.ErrorLevel)
+	repo := NewMarketRepository(inner, time.Minute, zap.New(core))
+	repo.fetchTimeout = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := repo.GetByID(ctx, "BTC-USDT", nil)
+		errCh <- err
+	}()
+
+	select {
+	case <-inner.started:
+	case <-time.After(time.Second):
+		t.Fatal("inner GetByID was not called")
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled GetByID still waited for inner fetch")
+	}
+
+	close(inner.release)
+	deadline := time.Now().Add(time.Second)
+	for logs.FilterMessage("market cache get by id failed").Len() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("inner error was not logged after caller cancel")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if _, err := repo.GetByID(context.Background(), "BTC-USDT", nil); !errors.Is(err, innerErr) {
+		t.Fatalf("follow-up error = %v, want %v", err, innerErr)
+	}
+	if got := inner.calls.Load(); got != 1 {
+		t.Fatalf("inner GetByID calls after cached error = %d, want 1", got)
+	}
+}
+
+type errorMarketRepo struct {
+	err error
+}
+
+func (r errorMarketRepo) GetByID(context.Context, string, []string) (domain.Market, error) {
+	return domain.Market{}, r.err
+}
+
+func (r errorMarketRepo) ListActivePage(context.Context, []string, int, string) ([]domain.Market, error) {
+	return nil, r.err
+}
+
+func (r errorMarketRepo) Ping(context.Context) error {
+	return r.err
+}
+
+var (
+	_ domain.MarketRepository = (*countingMarketRepo)(nil)
+	_ domain.MarketRepository = delayClockRepo{}
+	_ domain.MarketRepository = errorMarketRepo{}
+)

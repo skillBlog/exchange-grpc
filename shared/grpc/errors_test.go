@@ -24,6 +24,7 @@ func TestStatusFromError_commonMappings(t *testing.T) {
 		{name: "invalid token", err: sessionvalidation.ErrInvalidToken, code: codes.Unauthenticated},
 		{name: "rate limited", err: sharederrors.ErrRateLimited, code: codes.ResourceExhausted},
 		{name: "failed precondition", err: sharederrors.ErrFailedPrecondition, code: codes.FailedPrecondition},
+		{name: "conflict", err: sharederrors.ErrConflict, code: codes.FailedPrecondition},
 	}
 
 	for _, tc := range tests {

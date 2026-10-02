@@ -96,8 +96,8 @@ func (r *OrderRepository) ListByUserID(_ context.Context, userID string, limit i
 	return result, nil
 }
 
-// UpdateStatus обновляет статус ордера.
-func (r *OrderRepository) UpdateStatus(_ context.Context, id string, status domain.OrderStatus, updatedAt time.Time) error {
+// UpdateStatus обновляет статус ордера, если он всё ещё равен expected.
+func (r *OrderRepository) UpdateStatus(_ context.Context, id string, expected, next domain.OrderStatus, updatedAt time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -105,7 +105,10 @@ func (r *OrderRepository) UpdateStatus(_ context.Context, id string, status doma
 	if !ok {
 		return fmt.Errorf("%w: order %q", domain.ErrNotFound, id)
 	}
-	order.Status = status
+	if order.Status != expected {
+		return fmt.Errorf("%w: order %q status changed", domain.ErrConflict, id)
+	}
+	order.Status = next
 	order.UpdatedAt = updatedAt
 	r.orders[id] = order
 	return nil

@@ -111,7 +111,7 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		// In-memory fallback is intentional for local/dev when Redis is down.
 		// Limits are per-process: N replicas multiply the effective budget and
 		// weaken brute-force protection. Production should keep Redis required.
-		log.Warn("redis unavailable, using in-memory login rate limiter", zap.Error(err))
+		log.Error("redis unavailable, using in-memory login rate limiter", zap.Error(err))
 		loginLimiter = ratelimit.NewLoginLimiter(r.cfg.LoginRateLimit, r.cfg.LoginRateWindow)
 	} else {
 		defer redisClient.Close()

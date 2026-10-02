@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/userservice/internal/domain"
@@ -22,8 +21,8 @@ func NewUserRepository(db *DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-// Save сохраняет пользователя.
-func (r *UserRepository) Save(ctx context.Context, user domain.User) error {
+// Create вставляет нового пользователя.
+func (r *UserRepository) Create(ctx context.Context, user domain.User) error {
 	roleStrings := user.RoleStrings()
 	_, err := r.db.Pool.Exec(ctx, `
 		INSERT INTO users (id, email, password_hash, roles)
@@ -45,7 +44,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (domain.U
 		SELECT id, email, password_hash, roles
 		FROM users
 		WHERE email = $1
-	`, strings.TrimSpace(strings.ToLower(email)))
+	`, domain.NormalizeEmail(email))
 
 	user, err := scanUser(row)
 	if errors.Is(err, pgx.ErrNoRows) {

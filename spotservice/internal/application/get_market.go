@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/exchange-grpc/shared/roles"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/spotservice/internal/domain"
 	"go.uber.org/zap"
@@ -44,16 +45,9 @@ func (uc *GetMarket) Execute(ctx context.Context, input GetMarketInput) (market 
 		return domain.Market{}, fmt.Errorf("%w: market_id is required", domain.ErrInvalidArgument)
 	}
 
-	market, err = uc.markets.GetByID(ctx, marketID)
+	market, err = uc.markets.GetByID(ctx, marketID, roles.NormalizeStrings(input.UserRoles))
 	if err != nil {
 		return domain.Market{}, fmt.Errorf("get market: %w", err)
-	}
-	if !market.IsAccessibleBy(input.UserRoles) {
-		logWarn(ctx, uc.log, "get market denied", input.UserID,
-			zap.String("market_id", market.ID),
-			zap.String("reason", "forbidden"),
-		)
-		return domain.Market{}, fmt.Errorf("%w: market %q", domain.ErrForbidden, market.ID)
 	}
 
 	logAudit(ctx, uc.log, "get market", input.UserID, zap.String("market_id", market.ID))

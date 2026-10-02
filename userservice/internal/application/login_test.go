@@ -202,6 +202,50 @@ func TestLogin_unknownUserStillComparesPassword(t *testing.T) {
 	}
 }
 
+type failHashHasher struct {
+	inner    application.PasswordHasher
+	hashes   *int
+	compares *int
+}
+
+func (h failHashHasher) Hash(password string) (string, error) {
+	*h.hashes++
+	return "", errors.New("hash unavailable")
+}
+
+func (h failHashHasher) Compare(hash, password string) error {
+	*h.compares++
+	return h.inner.Compare(hash, password)
+}
+
+func TestLogin_unknownUserComparesEvenIfHashFails(t *testing.T) {
+	var hashes, compares int
+	login := application.NewLogin(
+		memory.NewUserRepository(),
+		failHashHasher{inner: bcrypt.NewHasher(0), hashes: &hashes, compares: &compares},
+		mustAccessTokens(t),
+		sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		ratelimit.NewLoginLimiter(10, time.Minute),
+		nil,
+	)
+
+	for i := 0; i < 2; i++ {
+		_, err := login.Execute(context.Background(), application.LoginInput{
+			Email:    "missing@example.com",
+			Password: "Password1!",
+		})
+		if !errors.Is(err, domain.ErrUnauthorized) {
+			t.Fatalf("attempt %d error = %v, want ErrUnauthorized", i+1, err)
+		}
+	}
+	if hashes != 0 {
+		t.Fatalf("Hash calls = %d, want 0", hashes)
+	}
+	if compares != 2 {
+		t.Fatalf("Compare calls = %d, want 2", compares)
+	}
+}
+
 func TestLogin_repoErrorStillComparesPassword(t *testing.T) {
 	var compares int
 	login := application.NewLogin(
@@ -228,7 +272,7 @@ type failingUserRepo struct {
 	err error
 }
 
-func (r failingUserRepo) Save(context.Context, domain.User) error { return nil }
+func (r failingUserRepo) Create(context.Context, domain.User) error { return nil }
 
 func (r failingUserRepo) GetByEmail(context.Context, string) (domain.User, error) {
 	return domain.User{}, r.err

@@ -199,3 +199,63 @@ func TestUnaryServerJWTAuth_whitespaceAuthorizationRejected(t *testing.T) {
 		t.Fatalf("code = %v, want Unauthenticated", status.Code(err))
 	}
 }
+
+func TestUnaryClientForwardAuthorization_forwardsBearer(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer jwt-token",
+	))
+
+	outgoing := captureOutgoingAuthorization(t, ctx)
+	if len(outgoing) != 1 || outgoing[0] != "Bearer jwt-token" {
+		t.Fatalf("outgoing authorization = %v, want [Bearer jwt-token]", outgoing)
+	}
+}
+
+func TestUnaryClientForwardAuthorization_doesNotForwardBasic(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Basic dXNlcjpwYXNz",
+	))
+
+	outgoing := captureOutgoingAuthorization(t, ctx)
+	if len(outgoing) != 0 {
+		t.Fatalf("outgoing authorization = %v, want empty", outgoing)
+	}
+}
+
+func TestUnaryClientForwardAuthorization_keepsExistingOutgoing(t *testing.T) {
+	ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer already-set",
+	))
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
+		"authorization", "Bearer from-incoming",
+	))
+
+	outgoing := captureOutgoingAuthorization(t, ctx)
+	if len(outgoing) != 1 || outgoing[0] != "Bearer already-set" {
+		t.Fatalf("outgoing authorization = %v, want [Bearer already-set]", outgoing)
+	}
+}
+
+func captureOutgoingAuthorization(t *testing.T, ctx context.Context) []string {
+	t.Helper()
+	var outgoing []string
+	err := sharedgrpc.UnaryClientForwardAuthorization(
+		ctx,
+		"/spot.v1.SpotService/GetMarket",
+		nil,
+		nil,
+		nil,
+		func(invoked context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
+			md, ok := metadata.FromOutgoingContext(invoked)
+			if !ok {
+				return nil
+			}
+			outgoing = md.Get("authorization")
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("UnaryClientForwardAuthorization() error = %v", err)
+	}
+	return outgoing
+}

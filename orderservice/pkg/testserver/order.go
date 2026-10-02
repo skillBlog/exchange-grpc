@@ -72,7 +72,12 @@ func NewOrder(t *testing.T, spotConn *googlegrpc.ClientConn, tokens *sessionvali
 		AdminLimit:   1000,
 		UserWindow:   time.Minute,
 	})
-	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, 256, 0, nil)
+	tx := memory.NewTxManager()
+	outbox := memory.NewOutboxStore()
+	orderServices := grpcserver.NewServices(orderRepo, idempotencyStore, marketClient, createOrderLimiter, tx, outbox, 256, 0, nil)
+	relayCtx, stopRelay := context.WithCancel(context.Background())
+	go application.NewOutboxRelay(tx, outbox, orderServices.Hub, nil, nil, 5*time.Millisecond, 50).Run(relayCtx)
+	t.Cleanup(stopRelay)
 	orderServer := grpcserver.NewServer(orderServices)
 
 	listener := bufconn.Listen(bufSize)

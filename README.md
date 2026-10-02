@@ -61,7 +61,7 @@ make compose-down   # остановить
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
 | `JWT_SECRET` | `dev-exchange-secret` | Секрет подписи JWT (общий для всех сервисов) |
-| `JWT_ACCESS_TTL` | `15m` | Время жизни access token (fallback: `JWT_TTL`) |
+| `JWT_ACCESS_TTL` | `15m` | Время жизни access token |
 | `JWT_REFRESH_TTL` | `168h` | Время жизни refresh token (userservice) |
 
 ### userservice

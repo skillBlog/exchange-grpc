@@ -104,3 +104,42 @@ func TestRegister_passwordWithoutSpecial(t *testing.T) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)
 	}
 }
+
+func TestRegister_normalizesEmailForLookup(t *testing.T) {
+	repo := memory.NewUserRepository()
+	uc := newRegisterUC(t, repo)
+
+	out, err := uc.Execute(context.Background(), application.RegisterInput{
+		Email:    "  Foo@Bar.COM ",
+		Password: "Password1!",
+	})
+	if err != nil {
+		t.Fatalf("register error = %v", err)
+	}
+
+	user, err := repo.GetByEmail(context.Background(), "FOO@bar.com")
+	if err != nil {
+		t.Fatalf("GetByEmail() error = %v", err)
+	}
+	if user.ID != out.UserID {
+		t.Fatalf("user id = %q, want %q", user.ID, out.UserID)
+	}
+	if user.Email != "foo@bar.com" {
+		t.Fatalf("stored email = %q, want foo@bar.com", user.Email)
+	}
+
+	login := application.NewLogin(
+		repo,
+		bcrypt.NewHasher(0),
+		mustAccessTokens(t),
+		sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		nil,
+		nil,
+	)
+	if _, err := login.Execute(context.Background(), application.LoginInput{
+		Email:    "Foo@Bar.com",
+		Password: "Password1!",
+	}); err != nil {
+		t.Fatalf("login error = %v", err)
+	}
+}

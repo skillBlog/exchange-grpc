@@ -23,7 +23,7 @@ func TestCreateOrder_rateLimited(t *testing.T) {
 		AdminLimit:   100,
 		UserWindow:   time.Minute,
 	})
-	uc := application.NewCreateOrder(repo, marketCheckerStub{}, nil, nil, limiter, nil)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, nil, nil, nil, limiter, nil)
 
 	input := application.CreateOrderInput{
 		UserID:   "11111111-1111-1111-1111-111111111111",
@@ -56,7 +56,7 @@ func TestCreateOrder_idempotencyBypassesRateLimit(t *testing.T) {
 		AdminLimit:   100,
 		UserWindow:   time.Minute,
 	})
-	uc := application.NewCreateOrder(repo, marketCheckerStub{}, idempotency, nil, limiter, nil)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{}, idempotency, nil, nil, limiter, nil)
 
 	input := application.CreateOrderInput{
 		UserID:         "11111111-1111-1111-1111-111111111111",
@@ -90,7 +90,7 @@ func TestCreateOrder_marketCheckBeforeRateLimit(t *testing.T) {
 		AdminLimit:   100,
 		UserWindow:   time.Minute,
 	})
-	uc := application.NewCreateOrder(repo, marketCheckerStub{err: domain.ErrMarketInactive}, nil, nil, limiter, nil)
+	uc := application.NewCreateOrder(repo, marketCheckerStub{err: domain.ErrMarketInactive}, nil, nil, nil, limiter, nil)
 
 	input := application.CreateOrderInput{
 		UserID:   "11111111-1111-1111-1111-111111111111",
@@ -104,7 +104,7 @@ func TestCreateOrder_marketCheckBeforeRateLimit(t *testing.T) {
 		t.Fatalf("error = %v, want ErrMarketInactive", err)
 	}
 
-	ucOK := application.NewCreateOrder(repo, marketCheckerStub{}, nil, nil, limiter, nil)
+	ucOK := application.NewCreateOrder(repo, marketCheckerStub{}, nil, nil, nil, limiter, nil)
 	if _, err := ucOK.Execute(context.Background(), input); err != nil {
 		t.Fatalf("Execute after inactive market must not be rate-limited: %v", err)
 	}

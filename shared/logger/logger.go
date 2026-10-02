@@ -60,7 +60,11 @@ func ServeLevelAdmin(addr string, level zap.AtomicLevel, log *zap.Logger) *http.
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", level)
-	srv := &http.Server{Addr: addr, Handler: mux}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			if log != nil {

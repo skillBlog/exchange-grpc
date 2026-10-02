@@ -17,6 +17,8 @@ const (
 type subscriberSet map[chan application.UpdateEvent]application.UserStreamFilter
 
 // UpdateHub — in-memory реализация рассылки обновлений ордеров.
+// Каналы не закрываются: вызывающий делает unsubscribe, хаб безопасно публикует
+// при гонке с отпиской (см. контракт OrderUpdateHub).
 type UpdateHub struct {
 	mu               sync.RWMutex
 	subscribers      map[string]subscriberSet
@@ -48,7 +50,8 @@ func NewUpdateHub(subscriberBuffer int, log *zap.Logger, publishTimeout time.Dur
 }
 
 // Publish уведомляет подписчиков ордера и пользователя.
-// Паника на одном закрытом канале не прерывает рассылку остальным.
+// Снимок каналов берётся под RLock; отписка после снимка безопасна — канал не закрыт.
+// Паника на закрытом канале (нарушение контракта) перехватывается и не рвёт рассылку.
 func (h *UpdateHub) Publish(event application.UpdateEvent) {
 	if h == nil {
 		return
@@ -100,18 +103,17 @@ func (h *UpdateHub) publishOne(ch chan application.UpdateEvent, event applicatio
 	}
 }
 
-// Subscribe регистрирует слушателя для конкретного ордера.
+// Subscribe регистрирует слушателя ордера. Вторая функция — unsubscribe; канал не закрывается.
 func (h *UpdateHub) Subscribe(orderID string) (<-chan application.UpdateEvent, func()) {
 	return h.subscribe(h.subscribers, orderID, application.UserStreamFilter{})
 }
 
 // SubscribeUser регистрирует слушателя ордеров пользователя с опциональным фильтром.
+// Вторая функция — unsubscribe; канал не закрывается.
 func (h *UpdateHub) SubscribeUser(userID string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, func()) {
 	return h.subscribe(h.userSubscribers, userID, filter)
 }
 
-// unsubscribe удаляет подписчика из карты и не закрывает канал:
-// Publish мог скопировать ch, а send в закрытый канал паникует.
 func (h *UpdateHub) subscribe(store map[string]subscriberSet, key string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, func()) {
 	ch := make(chan application.UpdateEvent, h.subscriberBuffer)
 

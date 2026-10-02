@@ -14,7 +14,9 @@ type OrderRepository interface {
 	// limit — максимальное число записей; afterID — exclusive cursor (пустой = с начала).
 	// Пустой filter не сужает выборку.
 	ListByUserID(ctx context.Context, userID string, limit int, afterID string, filter ListOrdersFilter) ([]Order, error)
-	UpdateStatus(ctx context.Context, id string, status OrderStatus, updatedAt time.Time) error
+	// UpdateStatus меняет статус, только если текущий равен expected.
+	// Нет строки — ErrNotFound; статус уже другой — ErrConflict.
+	UpdateStatus(ctx context.Context, id string, expected, next OrderStatus, updatedAt time.Time) error
 }
 
 // ListOrdersFilter — опциональные фильтры списка ордеров.

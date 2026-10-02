@@ -15,9 +15,14 @@ type User struct {
 	Roles        []roles.Role
 }
 
+// NormalizeEmail приводит email к каноническому виду для хранения и поиска.
+func NormalizeEmail(email string) string {
+	return strings.TrimSpace(strings.ToLower(email))
+}
+
 // NewUser создаёт пользователя с валидацией email, пароля и ролей.
 func NewUser(id, email, passwordHash string, userRoles []roles.Role) (User, error) {
-	email = strings.TrimSpace(strings.ToLower(email))
+	email = NormalizeEmail(email)
 	if email == "" {
 		return User{}, fmt.Errorf("%w: email is required", ErrInvalidArgument)
 	}

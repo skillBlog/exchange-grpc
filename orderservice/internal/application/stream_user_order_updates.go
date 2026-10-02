@@ -26,7 +26,8 @@ func NewStreamUserOrderUpdates(hub OrderUpdateHub) *StreamUserOrderUpdates {
 	return &StreamUserOrderUpdates{hub: hub}
 }
 
-// Execute стримит live-обновления ордеров пользователя. Стрим не закрывается на terminal-статусе.
+// Execute стримит live-обновления ордеров пользователя из hub (Kafka consumer при брокере).
+// По контракту hub: unsubscribe при выходе, канал не закрываем.
 func (uc *StreamUserOrderUpdates) Execute(ctx context.Context, input StreamUserOrderUpdatesInput, send func(UpdateEvent) error) (err error) {
 	ctx, span := tracing.Start(ctx, "order.StreamUserOrderUpdates",
 		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),

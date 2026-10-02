@@ -32,12 +32,12 @@ func TestGetMarket_returnsOpenMarket(t *testing.T) {
 	}
 }
 
-func TestGetMarket_rejectsForbiddenMarket(t *testing.T) {
+func TestGetMarket_hidesRestrictedMarketAsNotFound(t *testing.T) {
 	uc := application.NewGetMarket(memory.NewSeededMarketRepository(), nil)
 
 	_, err := uc.Execute(context.Background(), application.GetMarketInput{MarketID: "BNB-USDT"})
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("error = %v, want ErrForbidden", err)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
 	}
 }
 

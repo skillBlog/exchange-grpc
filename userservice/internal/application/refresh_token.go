@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	sharedgrpc "github.com/exchange-grpc/shared/grpc"
 	"github.com/exchange-grpc/shared/tracing"
 	"github.com/exchange-grpc/userservice/internal/domain"
 	"go.uber.org/zap"
@@ -48,7 +49,7 @@ func NewRefreshToken(
 	}
 }
 
-// Execute выпускает новый access token и новый refresh token, отзывая старый.
+// Execute атомарно ротирует refresh token и только после успеха выпускает access token.
 func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (out RefreshTokenOutput, err error) {
 	ctx, span := tracing.Start(ctx, "user.RefreshToken")
 	defer tracing.End(span, &err)
@@ -73,14 +74,15 @@ func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (o
 	}
 	span.SetAttributes(tracing.Attr("user_id", user.ID))
 
-	accessToken, err := uc.accessTokens.Issue(user.ID, user.RoleStrings())
-	if err != nil {
-		return RefreshTokenOutput{}, fmt.Errorf("issue access token: %w", err)
-	}
-
 	newRefresh, err := uc.refreshTokens.Rotate(ctx, oldRefresh, user.ID)
 	if err != nil {
 		return RefreshTokenOutput{}, fmt.Errorf("rotate refresh token: %w", err)
+	}
+
+	accessToken, err := uc.accessTokens.Issue(user.ID, user.RoleStrings())
+	if err != nil {
+		sharedgrpc.LogError(ctx, uc.log, "access token issue failed after refresh rotate", user.ID, zap.Error(err))
+		return RefreshTokenOutput{}, fmt.Errorf("issue access token: %w", err)
 	}
 
 	logAudit(ctx, uc.log, "refresh token rotated", user.ID)

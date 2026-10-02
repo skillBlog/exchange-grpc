@@ -22,8 +22,15 @@ type Market struct {
 
 const maxMarketIDLen = 64
 
-// NewMarket создаёт Market с нормализацией ролей и базовой валидацией.
-func NewMarket(id, name, baseAsset, quoteAsset string, enabled bool, allowedRoles []string) (Market, error) {
+// Limits — торговые ограничения рынка. Нулевое значение значит, что правило не задано.
+type Limits struct {
+	MinOrderSize      string
+	QuantityPrecision uint32
+	MinNotional       string
+}
+
+// NewMarket создаёт Market с нормализацией ролей, лимитами и базовой валидацией.
+func NewMarket(id, name, baseAsset, quoteAsset string, enabled bool, allowedRoles []string, limits Limits) (Market, error) {
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
 	if id == "" {
@@ -37,12 +44,15 @@ func NewMarket(id, name, baseAsset, quoteAsset string, enabled bool, allowedRole
 	}
 
 	return Market{
-		ID:           id,
-		Name:         name,
-		BaseAsset:    strings.TrimSpace(baseAsset),
-		QuoteAsset:   strings.TrimSpace(quoteAsset),
-		Enabled:      enabled,
-		AllowedRoles: roles.NormalizeStrings(allowedRoles),
+		ID:                id,
+		Name:              name,
+		BaseAsset:         strings.TrimSpace(baseAsset),
+		QuoteAsset:        strings.TrimSpace(quoteAsset),
+		Enabled:           enabled,
+		AllowedRoles:      roles.NormalizeStrings(allowedRoles),
+		MinOrderSize:      strings.TrimSpace(limits.MinOrderSize),
+		QuantityPrecision: limits.QuantityPrecision,
+		MinNotional:       strings.TrimSpace(limits.MinNotional),
 	}, nil
 }
 

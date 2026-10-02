@@ -31,7 +31,7 @@ func (r *OrderRepository) Create(ctx context.Context, order domain.Order) error 
 		priceCurrency = &currency
 	}
 
-	_, err := r.db.Pool.Exec(ctx, `
+	_, err := querierFrom(ctx, r.db.Pool).Exec(ctx, `
 		INSERT INTO orders (
 			id, user_id, market_id, side, price_amount, price_currency, quantity, status, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5::numeric, $6, $7::numeric, $8, $9, $10)
@@ -50,7 +50,7 @@ func (r *OrderRepository) Create(ctx context.Context, order domain.Order) error 
 
 // GetByID возвращает ордер по id.
 func (r *OrderRepository) GetByID(ctx context.Context, id string) (domain.Order, error) {
-	row := r.db.Pool.QueryRow(ctx, `
+	row := querierFrom(ctx, r.db.Pool).QueryRow(ctx, `
 		SELECT id, user_id, market_id, side,
 			price_amount::text, price_currency, quantity::text,
 			status, created_at, updated_at
@@ -67,7 +67,7 @@ func (r *OrderRepository) GetByID(ctx context.Context, id string) (domain.Order,
 
 // GetByIDAndUserID возвращает ордер при совпадении владельца (один запрос к БД).
 func (r *OrderRepository) GetByIDAndUserID(ctx context.Context, orderID, userID string) (domain.Order, error) {
-	row := r.db.Pool.QueryRow(ctx, `
+	row := querierFrom(ctx, r.db.Pool).QueryRow(ctx, `
 		SELECT id, user_id, market_id, side,
 			price_amount::text, price_currency, quantity::text,
 			status, created_at, updated_at
@@ -88,7 +88,7 @@ func (r *OrderRepository) ListByUserID(ctx context.Context, userID string, limit
 		return []domain.Order{}, nil
 	}
 
-	rows, err := r.db.Pool.Query(ctx, `
+	rows, err := querierFrom(ctx, r.db.Pool).Query(ctx, `
 		SELECT id, user_id, market_id, side,
 			price_amount::text, price_currency, quantity::text,
 			status, created_at, updated_at
@@ -116,20 +116,30 @@ func (r *OrderRepository) ListByUserID(ctx context.Context, userID string, limit
 	return orders, rows.Err()
 }
 
-// UpdateStatus обновляет статус ордера.
-func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status domain.OrderStatus, updatedAt time.Time) error {
-	tag, err := r.db.Pool.Exec(ctx, `
+// UpdateStatus обновляет статус ордера, если он всё ещё равен expected.
+func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, expected, next domain.OrderStatus, updatedAt time.Time) error {
+	q := querierFrom(ctx, r.db.Pool)
+	tag, err := q.Exec(ctx, `
 		UPDATE orders
 		SET status = $2, updated_at = $3
-		WHERE id = $1
-	`, id, string(status), updatedAt)
+		WHERE id = $1 AND status = $4
+	`, id, string(next), updatedAt, string(expected))
 	if err != nil {
 		return fmt.Errorf("update order status: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if tag.RowsAffected() > 0 {
+		return nil
+	}
+
+	var current string
+	err = q.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, id).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: order %q", domain.ErrNotFound, id)
 	}
-	return nil
+	if err != nil {
+		return fmt.Errorf("update order status: %w", err)
+	}
+	return fmt.Errorf("%w: order %q status is %s", domain.ErrConflict, id, current)
 }
 
 type orderRow interface {

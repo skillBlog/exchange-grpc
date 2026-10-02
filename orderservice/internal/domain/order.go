@@ -62,9 +62,9 @@ func NewOrder(id, userID, marketID string, side OrderSide, price Money, quantity
 	}, nil
 }
 
-// NewOrderID генерирует новый идентификатор ордера.
+// NewOrderID генерирует UUID v7. ListOrders пагинирует по id, v7 сохраняет порядок создания.
 func NewOrderID() string {
-	return uuid.NewString()
+	return uuid.Must(uuid.NewV7()).String()
 }
 
 func validateOrderInput(userID, marketID string, side OrderSide, quantity Decimal) error {

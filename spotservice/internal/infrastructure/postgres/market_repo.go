@@ -19,14 +19,22 @@ func NewMarketRepository(db *DB) *MarketRepository {
 	return &MarketRepository{db: db}
 }
 
-// GetByID возвращает рынок по идентификатору.
-func (r *MarketRepository) GetByID(ctx context.Context, id string) (domain.Market, error) {
+// GetByID возвращает рынок по идентификатору, если он доступен ролям пользователя.
+func (r *MarketRepository) GetByID(ctx context.Context, id string, userRoles []string) (domain.Market, error) {
+	if userRoles == nil {
+		userRoles = []string{}
+	}
+
 	row := r.db.Pool.QueryRow(ctx, `
 		SELECT id, name, base_asset, quote_asset, enabled, allowed_roles,
 			min_order_size::text, quantity_precision, min_notional::text
 		FROM markets
 		WHERE id = $1
-	`, id)
+			AND (
+				cardinality(allowed_roles) = 0
+				OR allowed_roles && $2::text[]
+			)
+	`, id, userRoles)
 
 	market, err := scanMarket(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -107,16 +115,15 @@ func scanMarket(row marketRow) (domain.Market, error) {
 	); err != nil {
 		return domain.Market{}, err
 	}
-	market, err := domain.NewMarket(id, name, baseAsset, quoteAsset, enabled, allowedRoles)
-	if err != nil {
-		return domain.Market{}, err
-	}
-	market.MinOrderSize = minOrderSize
+	var precision uint32
 	if quantityPrecision > 0 {
-		market.QuantityPrecision = uint32(quantityPrecision)
+		precision = uint32(quantityPrecision)
 	}
-	market.MinNotional = minNotional
-	return market, nil
+	return domain.NewMarket(id, name, baseAsset, quoteAsset, enabled, allowedRoles, domain.Limits{
+		MinOrderSize:      minOrderSize,
+		QuantityPrecision: precision,
+		MinNotional:       minNotional,
+	})
 }
 
 var _ domain.MarketRepository = (*MarketRepository)(nil)

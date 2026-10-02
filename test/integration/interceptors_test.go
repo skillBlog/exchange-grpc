@@ -87,21 +87,25 @@ func TestStreamOrderUpdates_receivesMultipleUpdates(t *testing.T) {
 		t.Fatalf("first status = %v", first.GetStatus())
 	}
 
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		_ = ordertestserver.UpdateOrderStatus(context.Background(), suite.OrderServices, ordertestserver.UpdateOrderStatusInput{
-			OrderID: created.GetOrderId(),
-			UserID:  integration.TestUserID,
-			Status:  ordertestserver.OrderStatusFilled,
-		})
-	}()
-
-	second, err := stream.Recv()
-	if err != nil {
-		t.Fatalf("second Recv() error = %v", err)
+	if err := ordertestserver.UpdateOrderStatus(context.Background(), suite.OrderServices, ordertestserver.UpdateOrderStatusInput{
+		OrderID: created.GetOrderId(),
+		UserID:  integration.TestUserID,
+		Status:  ordertestserver.OrderStatusFilled,
+	}); err != nil {
+		t.Fatalf("UpdateOrderStatus() error = %v", err)
 	}
-	if second.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_FILLED {
-		t.Fatalf("second status = %v, want filled", second.GetStatus())
+
+	for {
+		next, err := stream.Recv()
+		if err != nil {
+			t.Fatalf("Recv() after fill error = %v", err)
+		}
+		if next.GetStatus() == commonv1.OrderStatus_ORDER_STATUS_FILLED {
+			break
+		}
+		if next.GetStatus() != commonv1.OrderStatus_ORDER_STATUS_CREATED {
+			t.Fatalf("status = %v, want created or filled", next.GetStatus())
+		}
 	}
 }
 

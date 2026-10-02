@@ -21,11 +21,14 @@ type Services struct {
 }
 
 // NewServices подключает use case'ы Order с общим hub обновлений.
+// Live-события: Kafka consumer → hub (G5). Без брокера hub пишет OutboxRelay.
 func NewServices(
 	orders domain.OrderRepository,
 	idempotency domain.IdempotencyStore,
 	markets application.MarketChecker,
 	limiter application.CreateOrderRateLimiter,
+	tx application.TxManager,
+	outbox application.OutboxStore,
 	hubBufferSize int,
 	hubPublishTimeout time.Duration,
 	log *zap.Logger,
@@ -33,11 +36,11 @@ func NewServices(
 	orderHub := hub.NewUpdateHub(hubBufferSize, log, hubPublishTimeout)
 	return Services{
 		Hub:                    orderHub,
-		CreateOrder:            application.NewCreateOrder(orders, markets, idempotency, orderHub, limiter, log),
+		CreateOrder:            application.NewCreateOrder(orders, markets, idempotency, tx, outbox, limiter, log),
 		GetOrderStatus:         application.NewGetOrderStatus(orders),
 		ListOrders:             application.NewListOrders(orders),
 		StreamOrderUpdates:     application.NewStreamOrderUpdates(orders, orderHub),
 		StreamUserOrderUpdates: application.NewStreamUserOrderUpdates(orderHub),
-		UpdateOrderStatus:      application.NewUpdateOrderStatus(orders, orderHub, log),
+		UpdateOrderStatus:      application.NewUpdateOrderStatus(orders, tx, outbox, log),
 	}
 }

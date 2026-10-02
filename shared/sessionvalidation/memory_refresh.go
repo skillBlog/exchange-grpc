@@ -98,6 +98,8 @@ func (s *MemoryRefreshTokenStore) Rotate(ctx context.Context, oldTokenHash strin
 	old.RevokedAt = &revokedAt
 	s.byID[id] = old
 	s.byID[newToken.ID] = newToken
+	// Revoked token остаётся в byID, индекс хеша не нужен: иначе byHash копит историю ротаций.
+	delete(s.byHash, oldTokenHash)
 	s.byHash[newToken.TokenHash] = newToken.ID
 	return nil
 }

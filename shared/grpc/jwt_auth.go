@@ -129,7 +129,9 @@ func OutgoingContextWithBearer(ctx context.Context, accessToken string) context.
 	return metadata.NewOutgoingContext(ctx, md)
 }
 
-// UnaryClientForwardAuthorization пробрасывает Bearer JWT из incoming metadata в исходящий вызов.
+// UnaryClientForwardAuthorization пробрасывает только Bearer JWT из incoming metadata в исходящий вызов.
+// Другие схемы (Basic, произвольный Authorization) намеренно не форвардятся:
+// сервисы принимают только JWT, а непрозрачный прокси любой auth-схемы здесь не нужен.
 func UnaryClientForwardAuthorization(
 	ctx context.Context,
 	method string,
@@ -148,15 +150,6 @@ func UnaryClientForwardAuthorization(
 		if raw, found := firstAuthorizationValue(inMD); found {
 			if token, ok := parseBearerToken(raw); ok {
 				ctx = OutgoingContextWithBearer(ctx, token)
-			} else {
-				md, hasOutgoing := metadata.FromOutgoingContext(ctx)
-				if hasOutgoing {
-					md = md.Copy()
-				} else {
-					md = metadata.MD{}
-				}
-				md.Set(MetadataAuthorization, raw)
-				ctx = metadata.NewOutgoingContext(ctx, md)
 			}
 		}
 	}

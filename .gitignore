@@ -29,6 +29,7 @@ Thumbs.db
 .env
 .env.local
 !.env.example
+.gotmp
 
 # Сгенерированные файлы (раскомментируйте, если генерируете только локально)
 # api/proto/exchange/v1/*.pb.go

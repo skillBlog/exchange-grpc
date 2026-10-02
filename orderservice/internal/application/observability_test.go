@@ -28,6 +28,7 @@ func TestCreateOrder_rateLimitSpan(t *testing.T) {
 		marketCheckerStub{},
 		nil,
 		nil,
+		nil,
 		ratelimit.NewCreateOrderLimiter(application.CreateOrderRateLimitConfig{
 			GlobalLimit:  10,
 			GlobalWindow: time.Minute,

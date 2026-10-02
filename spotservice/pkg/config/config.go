@@ -2,8 +2,9 @@ package config
 
 import (
 	"os"
-	"strconv"
 	"time"
+
+	"github.com/exchange-grpc/shared/envparse"
 )
 
 const (
@@ -41,52 +42,23 @@ type Config struct {
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
-func LoadConfig() Config {
-	return Config{
-		GRPCAddr:              envOrDefault("SPOT_SERVICE_ADDR", defaultGRPCAddr),
-		JWTSecret:             envOrDefault("JWT_SECRET", defaultJWTSecret),
-		AccessTokenTTL:        envDurationOrDefault("JWT_ACCESS_TTL", envDurationOrDefault("JWT_TTL", defaultAccessTokenTTL)),
-		DatabaseURL:           envOrDefault("SPOT_DATABASE_URL", defaultDatabaseURL),
-		MigrationsDir:         envOrDefault("SPOT_MIGRATIONS_DIR", defaultMigrationsDir),
-		MarketCacheTTL:        envDurationOrDefault("MARKET_CACHE_TTL", defaultMarketCacheTTL),
-		ViewMarketsRateLimit:  envIntOrDefault("VIEW_MARKETS_RATE_LIMIT", defaultViewMarketsRateLimit),
-		ViewMarketsRateWindow: envDurationOrDefault("VIEW_MARKETS_RATE_WINDOW", defaultViewMarketsRateWindow),
-		HealthCheckTimeout:    envDurationOrDefault("HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
+func LoadConfig() (Config, error) {
+	var env envparse.Loader
+	cfg := Config{
+		GRPCAddr:              env.String("SPOT_SERVICE_ADDR", defaultGRPCAddr),
+		JWTSecret:             env.String("JWT_SECRET", defaultJWTSecret),
+		AccessTokenTTL:        env.Duration("JWT_ACCESS_TTL", defaultAccessTokenTTL),
+		DatabaseURL:           env.String("SPOT_DATABASE_URL", defaultDatabaseURL),
+		MigrationsDir:         env.String("SPOT_MIGRATIONS_DIR", defaultMigrationsDir),
+		MarketCacheTTL:        env.Duration("MARKET_CACHE_TTL", defaultMarketCacheTTL),
+		ViewMarketsRateLimit:  env.Int("VIEW_MARKETS_RATE_LIMIT", defaultViewMarketsRateLimit),
+		ViewMarketsRateWindow: env.Duration("VIEW_MARKETS_RATE_WINDOW", defaultViewMarketsRateWindow),
+		HealthCheckTimeout:    env.Duration("HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 		LogLevelAddr:          os.Getenv("LOG_LEVEL_ADDR"),
-		RedisURL:              envOrDefault("REDIS_URL", defaultRedisURL),
-		RedisPoolSize:         envIntOrDefault("REDIS_POOL_SIZE", defaultRedisPoolSize),
-		RedisMaxRetries:       envIntOrDefault("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
-		MetricsAddr:           envOrDefault("METRICS_ADDR", defaultMetricsAddr),
+		RedisURL:              env.String("REDIS_URL", defaultRedisURL),
+		RedisPoolSize:         env.Int("REDIS_POOL_SIZE", defaultRedisPoolSize),
+		RedisMaxRetries:       env.Int("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
+		MetricsAddr:           env.String("METRICS_ADDR", defaultMetricsAddr),
 	}
-}
-
-func envOrDefault(key, fallback string) string {
-	if v, ok := os.LookupEnv(key); ok {
-		return v
-	}
-	return fallback
-}
-
-func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
-	value, ok := os.LookupEnv(key)
-	if !ok || value == "" {
-		return fallback
-	}
-	parsed, err := time.ParseDuration(value)
-	if err != nil {
-		return fallback
-	}
-	return parsed
-}
-
-func envIntOrDefault(key string, fallback int) int {
-	value, ok := os.LookupEnv(key)
-	if !ok || value == "" {
-		return fallback
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return fallback
-	}
-	return parsed
+	return cfg, env.Err()
 }

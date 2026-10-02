@@ -9,7 +9,8 @@ import (
 )
 
 // UnaryServerInterceptors — канонический порядок unary-цепочки:
-// recovery → request_id → metrics → validate → logging → jwt → span attrs.
+// request_id → recovery → metrics → validate → logging → jwt → span attrs.
+// request_id стоит перед recovery, чтобы panic-лог содержал request_id.
 func UnaryServerInterceptors(
 	log *zap.Logger,
 	validator protovalidate.Validator,
@@ -17,8 +18,8 @@ func UnaryServerInterceptors(
 	publicMethods ...string,
 ) grpc.UnaryServerInterceptor {
 	return ChainUnaryServer(
-		UnaryServerRecovery(log),
 		UnaryServerRequestID,
+		UnaryServerRecovery(log),
 		metrics.UnaryServerInterceptor(),
 		NewUnaryServerProtoValidate(validator),
 		UnaryServerLogging(log),
@@ -28,7 +29,8 @@ func UnaryServerInterceptors(
 }
 
 // StreamServerInterceptors — канонический порядок stream-цепочки:
-// recovery → request_id → metrics → validate → logging → jwt → span attrs.
+// request_id → recovery → metrics → validate → logging → jwt → span attrs.
+// request_id стоит перед recovery, чтобы panic-лог содержал request_id.
 // JWT проверяется один раз при старте RPC из metadata, не на каждый RecvMsg.
 func StreamServerInterceptors(
 	log *zap.Logger,
@@ -37,8 +39,8 @@ func StreamServerInterceptors(
 	publicMethods ...string,
 ) grpc.StreamServerInterceptor {
 	return ChainStreamServer(
-		StreamServerRecovery(log),
 		StreamServerRequestID,
+		StreamServerRecovery(log),
 		metrics.StreamServerInterceptor(),
 		NewStreamServerProtoValidate(validator),
 		StreamServerLogging(log),
