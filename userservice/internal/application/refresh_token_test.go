@@ -3,6 +3,8 @@ package application_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +15,9 @@ import (
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/memory"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/ratelimit"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestRefreshToken_success(t *testing.T) {
@@ -130,9 +135,9 @@ func (r staticUserRepo) GetByID(_ context.Context, id string) (domain.User, erro
 }
 
 type recordingAccessIssuer struct {
-	token  string
-	err    error
-	calls  int
+	token   string
+	err     error
+	calls   int
 	onIssue func()
 }
 
@@ -235,6 +240,79 @@ func TestRefreshToken_usesLiveRolesFromRepository(t *testing.T) {
 	if len(claims.Roles) != 2 {
 		t.Fatalf("Roles = %v, want user and trader", claims.Roles)
 	}
+}
+
+func TestRefreshToken_missingUserIsNotUnauthorized(t *testing.T) {
+	core, logs := observer.New(zapcore.WarnLevel)
+	uc := application.NewRefreshToken(lookupUserRepo{err: domain.ErrNotFound}, nopAccessIssuer{}, validatingRefresh{}, zap.New(core))
+
+	_, err := uc.Execute(context.Background(), application.RefreshTokenInput{RefreshToken: "old-refresh"})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if errors.Is(err, domain.ErrUnauthorized) {
+		t.Fatalf("error = %v, must stay distinct from ErrUnauthorized", err)
+	}
+
+	entries := logs.FilterMessage("refresh token user not found").All()
+	if len(entries) != 1 {
+		t.Fatalf("not-found logs = %d, want 1", len(entries))
+	}
+	if got, _ := entries[0].ContextMap()["user_id"].(string); got != "user-1" {
+		t.Fatalf("user_id = %q, want user-1", got)
+	}
+}
+
+func TestRefreshToken_databaseErrorStaysDatabaseError(t *testing.T) {
+	dbErr := errors.New("connection reset")
+	core, logs := observer.New(zapcore.ErrorLevel)
+	uc := application.NewRefreshToken(lookupUserRepo{err: dbErr}, nopAccessIssuer{}, validatingRefresh{}, zap.New(core))
+
+	_, err := uc.Execute(context.Background(), application.RefreshTokenInput{RefreshToken: "old-refresh"})
+	if !errors.Is(err, dbErr) {
+		t.Fatalf("error = %v, want connection reset", err)
+	}
+	if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized) {
+		t.Fatalf("error = %v, database failure must not look like auth", err)
+	}
+
+	entries := logs.FilterMessage("refresh token user lookup failed").All()
+	if len(entries) != 1 {
+		t.Fatalf("lookup failure logs = %d, want 1", len(entries))
+	}
+	if strings.Contains(fmt.Sprint(entries[0].ContextMap()), "old-refresh") {
+		t.Fatal("refresh token must not appear in lookup failure log")
+	}
+}
+
+type lookupUserRepo struct {
+	err error
+}
+
+func (lookupUserRepo) Create(context.Context, domain.User) error { return nil }
+
+func (lookupUserRepo) GetByEmail(context.Context, string) (domain.User, error) {
+	return domain.User{}, domain.ErrNotFound
+}
+
+func (r lookupUserRepo) GetByID(context.Context, string) (domain.User, error) {
+	return domain.User{}, r.err
+}
+
+type nopAccessIssuer struct{}
+
+func (nopAccessIssuer) Issue(string, []string) (string, error) { return "", nil }
+
+type validatingRefresh struct{}
+
+func (validatingRefresh) Issue(context.Context, string) (string, error) { return "", nil }
+
+func (validatingRefresh) Validate(context.Context, string) (string, error) { return "user-1", nil }
+
+func (validatingRefresh) Revoke(context.Context, string) error { return nil }
+
+func (validatingRefresh) Rotate(context.Context, string, string) (string, error) {
+	return "new-refresh", nil
 }
 
 func TestGetUser_success(t *testing.T) {

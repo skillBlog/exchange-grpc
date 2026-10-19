@@ -6,14 +6,16 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
+	"github.com/exchange-grpc/orderservice/internal/infrastructure/fanout"
 	orderkafka "github.com/exchange-grpc/orderservice/internal/infrastructure/kafka"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/postgres"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/ratelimit"
+	"github.com/exchange-grpc/orderservice/internal/infrastructure/redisbus"
 	"github.com/exchange-grpc/orderservice/internal/infrastructure/spotclient"
 	grpcserver "github.com/exchange-grpc/orderservice/internal/interfaces/grpcserver"
 	"github.com/exchange-grpc/orderservice/pkg/config"
@@ -74,7 +76,10 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		_ = shutdownTracing(shutdownCtx)
 	}()
 
-	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
+	migrationsDir, err := resolveMigrationsDir(r.cfg.MigrationsDir)
+	if err != nil {
+		return fmt.Errorf("resolve migrations dir: %w", err)
+	}
 
 	db, err := postgres.Connect(runCtx, r.cfg.DatabaseURL)
 	if err != nil {
@@ -125,9 +130,13 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		sharedredis.WithMaxRetries(r.cfg.RedisMaxRetries),
 	)
 	if err != nil {
-		// In-memory fallback is intentional for local/dev when Redis is down.
-		// Limits are per-process: N replicas multiply the effective budget and
-		// weaken brute-force protection. Production should keep Redis required.
+		if !r.cfg.MemoryRateLimitFallbackAllowed() {
+			log.Error("redis unavailable, in-memory rate limit fallback disabled",
+				zap.String("app_env", r.cfg.AppEnv),
+				zap.Error(err),
+			)
+			return fmt.Errorf("redis unavailable: %w", err)
+		}
 		log.Warn("redis unavailable, using in-memory create order rate limiter", zap.Error(err))
 		createOrderLimiter = ratelimit.NewCreateOrderLimiter(rateLimitCfg)
 	} else {
@@ -146,13 +155,26 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	if len(r.cfg.KafkaBrokers) > 0 {
 		kafkaProducer = orderkafka.NewProducer(r.cfg.KafkaBrokers, r.cfg.KafkaOrderTopic, r.cfg.KafkaProduceTimeout)
 		defer func() { _ = kafkaProducer.Close() }()
-		orderPublisher = kafkaProducer
-		kafkaConsumer := orderkafka.NewConsumer(r.cfg.KafkaBrokers, r.cfg.KafkaOrderTopic, "", orderServices.Hub, log)
-		go kafkaConsumer.Run(runCtx)
-		log.Info("outbox relay publishes to kafka; streams consume via hub",
-			zap.Strings("brokers", r.cfg.KafkaBrokers),
-			zap.String("topic", r.cfg.KafkaOrderTopic),
-		)
+		if redisClient != nil {
+			orderPublisher = fanout.New(
+				kafkaProducer,
+				redisbus.NewPublisher(redisClient.Raw(), redisbus.OrderUpdatesChannel, r.cfg.KafkaProduceTimeout),
+			)
+			go redisbus.NewSubscriber(
+				redisClient.Raw(),
+				redisbus.OrderUpdatesChannel,
+				orderkafka.NewHubForwarder(orderServices.Hub),
+				log,
+			).Run(runCtx)
+			log.Info("outbox relay publishes to kafka; live updates fan out via redis",
+				zap.Strings("brokers", r.cfg.KafkaBrokers),
+				zap.String("topic", r.cfg.KafkaOrderTopic),
+				zap.String("redis_channel", redisbus.OrderUpdatesChannel),
+			)
+		} else {
+			orderPublisher = fanout.New(kafkaProducer, fanout.NewHubPublisher(orderServices.Hub))
+			log.Warn("redis unavailable, live order updates stay on this process")
+		}
 		if r.cfg.KafkaCommandTopic != "" {
 			inboxStore := postgres.NewInboxStore(db)
 			dlq := orderkafka.NewDeadLetterPublisher(r.cfg.KafkaBrokers, r.cfg.KafkaCommandDLQTopic, r.cfg.KafkaProduceTimeout)
@@ -238,15 +260,17 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	)
 }
 
-func resolveMigrationsDir(dir string) string {
-	if filepath.IsAbs(dir) {
-		return dir
+func resolveMigrationsDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", fmt.Errorf("migrations dir is empty")
 	}
-	candidates := []string{dir, filepath.Join("orderservice", dir)}
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", fmt.Errorf("migrations dir %q: %w", dir, err)
 	}
-	return dir
+	if !info.IsDir() {
+		return "", fmt.Errorf("migrations dir %q is not a directory", dir)
+	}
+	return dir, nil
 }

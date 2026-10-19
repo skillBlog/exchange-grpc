@@ -156,6 +156,58 @@ func TestStreamUserOrderUpdates_sendFailureUnsubscribes(t *testing.T) {
 	})
 }
 
+func TestStreamUserOrderUpdates_slowSubscriberEndsStream(t *testing.T) {
+	orderHub := hub.NewUpdateHub(1, logger.NewNop(), 30*time.Millisecond)
+	uc := application.NewStreamUserOrderUpdates(orderHub)
+
+	inSend := make(chan struct{})
+	release := make(chan struct{})
+	errCh := make(chan error, 1)
+	go func() {
+		var blocked bool
+		errCh <- uc.Execute(context.Background(), application.StreamUserOrderUpdatesInput{UserID: testUserID}, func(application.UpdateEvent) error {
+			if !blocked {
+				blocked = true
+				close(inSend)
+				<-release
+			}
+			return nil
+		})
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	orderHub.Publish(application.UpdateEvent{
+		OrderID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		UserID:  testUserID,
+		Status:  domain.OrderStatusCreated,
+	})
+	select {
+	case <-inSend:
+	case <-time.After(time.Second):
+		t.Fatal("live update was not delivered")
+	}
+	orderHub.Publish(application.UpdateEvent{
+		OrderID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		UserID:  testUserID,
+		Status:  domain.OrderStatusCreated,
+	})
+	orderHub.Publish(application.UpdateEvent{
+		OrderID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		UserID:  testUserID,
+		Status:  domain.OrderStatusFilled,
+	})
+	close(release)
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, application.ErrSubscriberDropped) {
+			t.Fatalf("error = %v, want ErrSubscriberDropped", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stream did not end after the subscriber was dropped")
+	}
+}
+
 func TestStreamUserOrderUpdates_nilHubReturnsImmediately(t *testing.T) {
 	uc := application.NewStreamUserOrderUpdates(nil)
 

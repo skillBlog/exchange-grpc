@@ -15,39 +15,83 @@ import (
 func TestUpdateHub_doubleUnsubscribeDoesNotPanic(t *testing.T) {
 	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
-	_, unsubscribe := orderHub.Subscribe("order-1")
+	_, _, unsubscribe := orderHub.Subscribe("order-1")
 	unsubscribe()
 	unsubscribe()
 
-	_, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
+	_, _, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
 	unsubUser()
 	unsubUser()
 }
 
 func TestUpdateHub_publishTimeoutIsLogged(t *testing.T) {
-	core, observed := observer.New(zap.WarnLevel)
+	core, observed := observer.New(zap.ErrorLevel)
 	orderHub := hub.NewUpdateHub(1, zap.New(core), 20*time.Millisecond)
 
-	_, unsubscribe := orderHub.Subscribe("order-1")
+	updates, dropped, unsubscribe := orderHub.Subscribe("order-1")
 	defer unsubscribe()
 
 	now := time.Now().UTC()
 	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusCreated, UpdatedAt: now})
 	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusFilled, UpdatedAt: now})
 
-	if observed.Len() != 1 {
-		t.Fatalf("log entries = %d, want 1", observed.Len())
+	select {
+	case <-dropped:
+	case <-time.After(time.Second):
+		t.Fatal("slow subscriber was not dropped")
 	}
-	entry := observed.All()[0]
-	if entry.Message != "order update timed out waiting for subscriber" {
-		t.Fatalf("message = %q", entry.Message)
+	select {
+	case _, ok := <-updates:
+		if !ok {
+			t.Fatal("event channel must stay open")
+		}
+	default:
+	}
+	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusRejected, UpdatedAt: now})
+
+	if observed.FilterMessage("slow subscriber dropped").Len() != 1 {
+		t.Fatalf("drop logs = %d, want 1", observed.FilterMessage("slow subscriber dropped").Len())
+	}
+	if observed.FilterMessage("order update publish panic recovered").Len() != 0 {
+		t.Fatal("dropping a subscriber must not close its event channel")
+	}
+}
+
+func TestUpdateHub_droppedSubscriberDoesNotBlockAnother(t *testing.T) {
+	orderHub := hub.NewUpdateHub(1, logger.NewNop(), 20*time.Millisecond)
+	_, dropped, unsubSlow := orderHub.Subscribe("order-1")
+	defer unsubSlow()
+	fast, _, unsubFast := orderHub.Subscribe("order-1")
+	defer unsubFast()
+
+	now := time.Now().UTC()
+	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusCreated, UpdatedAt: now})
+	select {
+	case <-fast:
+	case <-time.After(time.Second):
+		t.Fatal("fast subscriber missed the first event")
+	}
+
+	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusFilled, UpdatedAt: now})
+	select {
+	case <-dropped:
+	case <-time.After(time.Second):
+		t.Fatal("slow subscriber was not dropped")
+	}
+	select {
+	case event := <-fast:
+		if event.Status != domain.OrderStatusFilled {
+			t.Fatalf("Status = %q, want filled", event.Status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fast subscriber missed the event published while the slow one was dropped")
 	}
 }
 
 func TestUpdateHub_subscriberReceivesPublishedEvents(t *testing.T) {
 	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
-	updates, unsubscribe := orderHub.Subscribe("order-1")
+	updates, _, unsubscribe := orderHub.Subscribe("order-1")
 	defer unsubscribe()
 
 	orderHub.Publish(application.UpdateEvent{OrderID: "order-1", Status: domain.OrderStatusFilled, UpdatedAt: time.Now().UTC()})
@@ -68,9 +112,9 @@ func TestUpdateHub_subscriberReceivesPublishedEvents(t *testing.T) {
 func TestUpdateHub_userSubscriberReceivesEvents(t *testing.T) {
 	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
-	updates, unsubscribe := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
+	updates, _, unsubscribe := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
 	defer unsubscribe()
-	other, unsubOther := orderHub.SubscribeUser("user-2", application.UserStreamFilter{})
+	other, _, unsubOther := orderHub.SubscribeUser("user-2", application.UserStreamFilter{})
 	defer unsubOther()
 
 	orderHub.Publish(application.UpdateEvent{
@@ -99,9 +143,9 @@ func TestUpdateHub_userSubscriberReceivesEvents(t *testing.T) {
 func TestUpdateHub_publishFansOutToOrderAndUser(t *testing.T) {
 	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
-	byOrder, unsubOrder := orderHub.Subscribe("order-1")
+	byOrder, _, unsubOrder := orderHub.Subscribe("order-1")
 	defer unsubOrder()
-	byUser, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
+	byUser, _, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{})
 	defer unsubUser()
 
 	orderHub.Publish(application.UpdateEvent{
@@ -127,7 +171,7 @@ func TestUpdateHub_unsubscribeThenPublishDoesNotPanic(t *testing.T) {
 	core, logs := observer.New(zap.ErrorLevel)
 	orderHub := hub.NewUpdateHub(4, zap.New(core), 20*time.Millisecond)
 
-	_, unsubscribe := orderHub.Subscribe("order-1")
+	_, _, unsubscribe := orderHub.Subscribe("order-1")
 	unsubscribe()
 
 	orderHub.Publish(application.UpdateEvent{
@@ -144,7 +188,7 @@ func TestUpdateHub_unsubscribeThenPublishDoesNotPanic(t *testing.T) {
 func TestUpdateHub_userFilterDropsNonMatchingEvents(t *testing.T) {
 	orderHub := hub.NewUpdateHub(4, logger.NewNop(), 0)
 
-	updates, unsubscribe := orderHub.SubscribeUser("user-1", application.UserStreamFilter{
+	updates, _, unsubscribe := orderHub.SubscribeUser("user-1", application.UserStreamFilter{
 		MarketID: "BTC-USDT",
 		Status:   domain.OrderStatusCreated,
 	})
@@ -199,9 +243,9 @@ func TestUpdateHub_concurrentUnsubscribeAndPublish(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 200; i++ {
-		_, unsub := orderHub.Subscribe("order-1")
+		_, _, unsub := orderHub.Subscribe("order-1")
 		unsub()
-		_, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{MarketID: "BTC-USDT"})
+		_, _, unsubUser := orderHub.SubscribeUser("user-1", application.UserStreamFilter{MarketID: "BTC-USDT"})
 		unsubUser()
 	}
 	<-done

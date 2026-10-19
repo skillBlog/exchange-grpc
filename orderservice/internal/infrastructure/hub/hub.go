@@ -16,13 +16,20 @@ const (
 
 type subscriberSet map[chan application.UpdateEvent]application.UserStreamFilter
 
+type registration struct {
+	store   map[string]subscriberSet
+	key     string
+	dropped chan struct{}
+}
+
 // UpdateHub — in-memory реализация рассылки обновлений ордеров.
-// Каналы не закрываются: вызывающий делает unsubscribe, хаб безопасно публикует
-// при гонке с отпиской (см. контракт OrderUpdateHub).
+// Канал событий не закрывается. Медленный подписчик удаляется из мапы,
+// а его сигнал dropped закрывается, чтобы стрим завершился.
 type UpdateHub struct {
 	mu               sync.RWMutex
 	subscribers      map[string]subscriberSet
 	userSubscribers  map[string]subscriberSet
+	regs             map[chan application.UpdateEvent]registration
 	subscriberBuffer int
 	publishTimeout   time.Duration
 	log              *zap.Logger
@@ -43,6 +50,7 @@ func NewUpdateHub(subscriberBuffer int, log *zap.Logger, publishTimeout time.Dur
 	return &UpdateHub{
 		subscribers:      make(map[string]subscriberSet),
 		userSubscribers:  make(map[string]subscriberSet),
+		regs:             make(map[chan application.UpdateEvent]registration),
 		subscriberBuffer: subscriberBuffer,
 		publishTimeout:   publishTimeout,
 		log:              log,
@@ -94,50 +102,74 @@ func (h *UpdateHub) publishOne(ch chan application.UpdateEvent, event applicatio
 	select {
 	case ch <- event:
 	case <-timer.C:
-		h.log.Warn("order update timed out waiting for subscriber",
-			zap.String("order_id", event.OrderID),
-			zap.String("user_id", event.UserID),
-			zap.String("status", string(event.Status)),
-			zap.Duration("timeout", h.publishTimeout),
-		)
+		h.drop(ch, event)
 	}
 }
 
-// Subscribe регистрирует слушателя ордера. Вторая функция — unsubscribe; канал не закрывается.
-func (h *UpdateHub) Subscribe(orderID string) (<-chan application.UpdateEvent, func()) {
+func (h *UpdateHub) drop(ch chan application.UpdateEvent, event application.UpdateEvent) {
+	dropped, ok := h.remove(ch)
+	if !ok {
+		return
+	}
+	close(dropped)
+	h.log.Error("slow subscriber dropped",
+		zap.String("order_id", event.OrderID),
+		zap.String("user_id", event.UserID),
+		zap.String("status", string(event.Status)),
+		zap.Duration("timeout", h.publishTimeout),
+	)
+}
+
+func (h *UpdateHub) remove(ch chan application.UpdateEvent) (chan struct{}, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	reg, ok := h.regs[ch]
+	if !ok {
+		return nil, false
+	}
+	delete(h.regs, ch)
+	if set := reg.store[reg.key]; set != nil {
+		delete(set, ch)
+		if len(set) == 0 {
+			delete(reg.store, reg.key)
+		}
+	}
+	return reg.dropped, true
+}
+
+// Subscribe регистрирует слушателя ордера.
+// Второй канал закрывается, когда хаб снимает медленного подписчика. Канал событий не закрывается.
+func (h *UpdateHub) Subscribe(orderID string) (<-chan application.UpdateEvent, <-chan struct{}, func()) {
 	return h.subscribe(h.subscribers, orderID, application.UserStreamFilter{})
 }
 
 // SubscribeUser регистрирует слушателя ордеров пользователя с опциональным фильтром.
-// Вторая функция — unsubscribe; канал не закрывается.
-func (h *UpdateHub) SubscribeUser(userID string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, func()) {
+// Второй канал закрывается, когда хаб снимает медленного подписчика. Канал событий не закрывается.
+func (h *UpdateHub) SubscribeUser(userID string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, <-chan struct{}, func()) {
 	return h.subscribe(h.userSubscribers, userID, filter)
 }
 
-func (h *UpdateHub) subscribe(store map[string]subscriberSet, key string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, func()) {
+func (h *UpdateHub) subscribe(store map[string]subscriberSet, key string, filter application.UserStreamFilter) (<-chan application.UpdateEvent, <-chan struct{}, func()) {
 	ch := make(chan application.UpdateEvent, h.subscriberBuffer)
+	dropped := make(chan struct{})
 
 	h.mu.Lock()
 	if store[key] == nil {
 		store[key] = make(subscriberSet)
 	}
 	store[key][ch] = filter
+	h.regs[ch] = registration{store: store, key: key, dropped: dropped}
 	h.mu.Unlock()
 
 	var once sync.Once
 	unsubscribe := func() {
 		once.Do(func() {
-			h.mu.Lock()
-			defer h.mu.Unlock()
-
-			delete(store[key], ch)
-			if len(store[key]) == 0 {
-				delete(store, key)
-			}
+			h.remove(ch)
 		})
 	}
 
-	return ch, unsubscribe
+	return ch, dropped, unsubscribe
 }
 
 var (

@@ -29,19 +29,20 @@ return 1
 // При ошибке соединения запросы уходят в in-memory limiter, чтобы сервис
 // не отвечал одной и той же ошибкой Redis на каждый ViewMarkets.
 type RedisViewMarketsLimiter struct {
-	client      *redis.Client
-	fallback    *ViewMarketsLimiter
-	log         *zap.Logger
-	maxAttempts int
-	window      time.Duration
-	prefix      string
+	client              *redis.Client
+	fallback            *ViewMarketsLimiter
+	log                 *zap.Logger
+	maxAttempts         int
+	window              time.Duration
+	prefix              string
+	allowMemoryFallback bool
 
 	fallbackLogMu   sync.Mutex
 	lastFallbackLog time.Time
 }
 
 // NewRedisViewMarketsLimiter создаёт распределённый rate limiter для ViewMarkets.
-func NewRedisViewMarketsLimiter(client *redis.Client, maxAttempts int, window time.Duration, log *zap.Logger) *RedisViewMarketsLimiter {
+func NewRedisViewMarketsLimiter(client *redis.Client, maxAttempts int, window time.Duration, log *zap.Logger, allowMemoryFallback bool) *RedisViewMarketsLimiter {
 	if maxAttempts <= 0 {
 		maxAttempts = 30
 	}
@@ -52,12 +53,13 @@ func NewRedisViewMarketsLimiter(client *redis.Client, maxAttempts int, window ti
 		log = zap.NewNop()
 	}
 	return &RedisViewMarketsLimiter{
-		client:      client,
-		fallback:    NewViewMarketsLimiter(maxAttempts, window),
-		log:         log,
-		maxAttempts: maxAttempts,
-		window:      window,
-		prefix:      "spotservice:ratelimit:view_markets",
+		client:              client,
+		fallback:            NewViewMarketsLimiter(maxAttempts, window),
+		log:                 log,
+		maxAttempts:         maxAttempts,
+		window:              window,
+		prefix:              "spotservice:ratelimit:view_markets",
+		allowMemoryFallback: allowMemoryFallback,
 	}
 }
 
@@ -67,6 +69,9 @@ func (l *RedisViewMarketsLimiter) Allow(ctx context.Context, userID string) erro
 		return err
 	}
 	if l.client == nil {
+		if !l.allowMemoryFallback {
+			return fmt.Errorf("redis view markets limiter is not configured")
+		}
 		return l.fallback.Allow(ctx, userID)
 	}
 
@@ -82,7 +87,11 @@ func (l *RedisViewMarketsLimiter) Allow(ctx context.Context, userID string) erro
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		l.logFallback(err)
+		if !l.allowMemoryFallback {
+			l.logRedisFailure(err, false)
+			return fmt.Errorf("check view markets rate limit: %w", err)
+		}
+		l.logRedisFailure(err, true)
 		return l.fallback.Allow(ctx, userID)
 	}
 	if result != 1 {
@@ -91,7 +100,7 @@ func (l *RedisViewMarketsLimiter) Allow(ctx context.Context, userID string) erro
 	return nil
 }
 
-func (l *RedisViewMarketsLimiter) logFallback(err error) {
+func (l *RedisViewMarketsLimiter) logRedisFailure(err error, fallback bool) {
 	now := time.Now()
 	l.fallbackLogMu.Lock()
 	defer l.fallbackLogMu.Unlock()
@@ -99,7 +108,11 @@ func (l *RedisViewMarketsLimiter) logFallback(err error) {
 		return
 	}
 	l.lastFallbackLog = now
-	l.log.Error("redis view markets limiter failed, using in-memory fallback", zap.Error(err))
+	message := "redis view markets limiter failed"
+	if fallback {
+		message = "redis view markets limiter failed, using in-memory fallback"
+	}
+	l.log.Error(message, zap.Error(err))
 }
 
 var _ application.ViewMarketsRateLimiter = (*RedisViewMarketsLimiter)(nil)

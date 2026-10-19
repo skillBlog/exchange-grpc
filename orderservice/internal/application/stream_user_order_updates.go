@@ -27,7 +27,8 @@ func NewStreamUserOrderUpdates(hub OrderUpdateHub) *StreamUserOrderUpdates {
 }
 
 // Execute стримит live-обновления ордеров пользователя из hub (Kafka consumer при брокере).
-// По контракту hub: unsubscribe при выходе, канал не закрываем.
+// Снимок состояния здесь не читается: после ErrSubscriberDropped клиент добирает его через ListOrders.
+// По контракту hub: unsubscribe при выходе, канал событий не закрываем.
 func (uc *StreamUserOrderUpdates) Execute(ctx context.Context, input StreamUserOrderUpdatesInput, send func(UpdateEvent) error) (err error) {
 	ctx, span := tracing.Start(ctx, "order.StreamUserOrderUpdates",
 		tracing.Attr("user_id", strings.TrimSpace(input.UserID)),
@@ -44,7 +45,7 @@ func (uc *StreamUserOrderUpdates) Execute(ctx context.Context, input StreamUserO
 		return fmt.Errorf("order update hub is not configured")
 	}
 
-	updates, unsubscribe := uc.hub.SubscribeUser(userID, UserStreamFilter{
+	updates, dropped, unsubscribe := uc.hub.SubscribeUser(userID, UserStreamFilter{
 		MarketID: marketID,
 		Status:   input.Status,
 	})
@@ -54,6 +55,8 @@ func (uc *StreamUserOrderUpdates) Execute(ctx context.Context, input StreamUserO
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-dropped:
+			return fmt.Errorf("%w: slow user subscriber", ErrSubscriberDropped)
 		case update, ok := <-updates:
 			if !ok {
 				return nil

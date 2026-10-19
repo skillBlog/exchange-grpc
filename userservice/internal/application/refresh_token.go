@@ -68,8 +68,10 @@ func (uc *RefreshToken) Execute(ctx context.Context, input RefreshTokenInput) (o
 	user, err := uc.users.GetByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return RefreshTokenOutput{}, fmt.Errorf("get user: %w", domain.ErrUnauthorized)
+			uc.log.Warn("refresh token user not found", zap.String("user_id", userID))
+			return RefreshTokenOutput{}, fmt.Errorf("get user: %w", domain.ErrNotFound)
 		}
+		uc.log.Error("refresh token user lookup failed", zap.String("user_id", userID), zap.Error(err))
 		return RefreshTokenOutput{}, fmt.Errorf("get user: %w", err)
 	}
 	span.SetAttributes(tracing.Attr("user_id", user.ID))

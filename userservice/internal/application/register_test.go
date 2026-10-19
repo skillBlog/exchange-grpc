@@ -3,6 +3,8 @@ package application_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,9 @@ import (
 	"github.com/exchange-grpc/userservice/internal/domain"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/bcrypt"
 	"github.com/exchange-grpc/userservice/internal/infrastructure/memory"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func newRegisterUC(t *testing.T, repo domain.UserRepository) *application.Register {
@@ -102,6 +107,45 @@ func TestRegister_passwordWithoutSpecial(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestRegister_passwordRejectionLogHidesRuleFromClient(t *testing.T) {
+	core, logs := observer.New(zapcore.WarnLevel)
+	accessTokens, err := sessionvalidation.NewTokenService("test-secret", time.Hour)
+	if err != nil {
+		t.Fatalf("NewTokenService() error = %v", err)
+	}
+	uc := application.NewRegister(
+		memory.NewUserRepository(),
+		bcrypt.NewHasher(0),
+		accessTokens,
+		sessionvalidation.NewRefreshTokenService(memory.NewRefreshTokenRepository(), 24*time.Hour),
+		zap.New(core),
+	)
+
+	const password = "Password1"
+	_, err = uc.Execute(context.Background(), application.RegisterInput{
+		Email:    "user@example.com",
+		Password: password,
+	})
+	if !errors.Is(err, domain.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+	if strings.Contains(err.Error(), "special") {
+		t.Fatalf("client error %q reveals the failed rule", err.Error())
+	}
+
+	entries := logs.FilterMessage("registration password rejected").All()
+	if len(entries) != 1 {
+		t.Fatalf("password rejection logs = %d, want 1", len(entries))
+	}
+	reason, ok := entries[0].ContextMap()["reason"].(string)
+	if !ok || reason != "missing_special" {
+		t.Fatalf("reason = %v, want missing_special", entries[0].ContextMap()["reason"])
+	}
+	if strings.Contains(fmt.Sprint(entries[0].ContextMap()), password) || strings.Contains(entries[0].Message, password) {
+		t.Fatal("password must not appear in rejection log")
 	}
 }
 

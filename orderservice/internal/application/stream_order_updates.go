@@ -61,13 +61,15 @@ func (uc *StreamOrderUpdates) Execute(ctx context.Context, input StreamOrderUpda
 		return fmt.Errorf("order update hub is not configured")
 	}
 
-	updates, unsubscribe := uc.hub.Subscribe(order.ID)
+	updates, dropped, unsubscribe := uc.hub.Subscribe(order.ID)
 	defer unsubscribe()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-dropped:
+			return fmt.Errorf("%w: slow order subscriber", ErrSubscriberDropped)
 		case update, ok := <-updates:
 			if !ok {
 				return nil

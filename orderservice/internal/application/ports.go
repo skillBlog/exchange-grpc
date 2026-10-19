@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/domain"
 )
@@ -28,12 +30,16 @@ type OutboxStore interface {
 	Append(ctx context.Context, event OutboxEvent) error
 }
 
-// OutboxRelayStore — очередь для relay. ClaimBatch должен вызываться внутри WithinTx:
-// postgres держит строки через SELECT … FOR UPDATE SKIP LOCKED до commit/rollback.
+// OutboxRelayStore — очередь для relay.
+// ClaimBatch вызывается в короткой транзакции: ставит claimed_at и коммитится до Publish.
+// ReleaseStaleClaims возвращает строки с claimed_at старше olderThan, если процесс умер после claim.
+// MarkProcessed и RecordAttempt идут отдельными транзакциями после Publish.
+// RecordAttempt снимает claim сразу, чтобы ошибка брокера не ждала таймаут.
 type OutboxRelayStore interface {
 	ClaimBatch(ctx context.Context, limit int) ([]OutboxEvent, error)
 	MarkProcessed(ctx context.Context, ids []string) error
 	RecordAttempt(ctx context.Context, id string) error
+	ReleaseStaleClaims(ctx context.Context, olderThan time.Time) (int, error)
 }
 
 // OrderNotifier публикует обновления статуса ордера в in-memory hub.
@@ -65,14 +71,18 @@ type DeadLetterSink interface {
 	Publish(ctx context.Context, original []byte, reason string) error
 }
 
+// ErrSubscriberDropped означает, что хаб снял медленного подписчика.
+// Стрим должен завершиться, чтобы клиент переподключился и добрал состояние из БД.
+var ErrSubscriberDropped = errors.New("subscriber dropped")
+
 // OrderUpdateHub — pub/sub обновлений ордеров для streaming.
 //
-// Контракт: Subscribe/SubscribeUser возвращают канал и unsubscribe.
-// Вызывающий (gRPC-стрим / use case) обязан вызвать unsubscribe при завершении.
-// Hub канал не закрывает: Publish мог уже скопировать ch, send в закрытый канал паникует.
-// Publish безопасен при одновременной отписке.
+// Контракт: Subscribe/SubscribeUser возвращают канал событий, сигнал снятия и unsubscribe.
+// Вызывающий обязан вызвать unsubscribe при завершении.
+// Hub не закрывает канал событий: Publish мог уже скопировать его, send в закрытый канал паникует.
+// Медленный подписчик удаляется из мапы, а сигнал dropped закрывается.
 type OrderUpdateHub interface {
 	OrderNotifier
-	Subscribe(orderID string) (<-chan UpdateEvent, func())
-	SubscribeUser(userID string, filter UserStreamFilter) (<-chan UpdateEvent, func())
+	Subscribe(orderID string) (<-chan UpdateEvent, <-chan struct{}, func())
+	SubscribeUser(userID string, filter UserStreamFilter) (<-chan UpdateEvent, <-chan struct{}, func())
 }

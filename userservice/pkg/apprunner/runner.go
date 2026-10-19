@@ -6,7 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -73,7 +73,10 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		_ = shutdownTracing(shutdownCtx)
 	}()
 
-	migrationsDir := resolveMigrationsDir(r.cfg.MigrationsDir)
+	migrationsDir, err := resolveMigrationsDir(r.cfg.MigrationsDir)
+	if err != nil {
+		return fmt.Errorf("resolve migrations dir: %w", err)
+	}
 
 	db, err := postgres.Connect(runCtx, r.cfg.DatabaseURL)
 	if err != nil {
@@ -108,10 +111,14 @@ func (r *AppRunner) run(log *zap.Logger) error {
 		sharedredis.WithMaxRetries(r.cfg.RedisMaxRetries),
 	)
 	if err != nil {
-		// In-memory fallback is intentional for local/dev when Redis is down.
-		// Limits are per-process: N replicas multiply the effective budget and
-		// weaken brute-force protection. Production should keep Redis required.
-		log.Error("redis unavailable, using in-memory login rate limiter", zap.Error(err))
+		if !r.cfg.MemoryRateLimitFallbackAllowed() {
+			log.Error("redis unavailable, in-memory rate limit fallback disabled",
+				zap.String("app_env", r.cfg.AppEnv),
+				zap.Error(err),
+			)
+			return fmt.Errorf("redis unavailable: %w", err)
+		}
+		log.Warn("redis unavailable, using in-memory login rate limiter", zap.Error(err))
 		loginLimiter = ratelimit.NewLoginLimiter(r.cfg.LoginRateLimit, r.cfg.LoginRateWindow)
 	} else {
 		defer redisClient.Close()
@@ -185,15 +192,17 @@ func (r *AppRunner) run(log *zap.Logger) error {
 	)
 }
 
-func resolveMigrationsDir(dir string) string {
-	if filepath.IsAbs(dir) {
-		return dir
+func resolveMigrationsDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", fmt.Errorf("migrations dir is empty")
 	}
-	candidates := []string{dir, filepath.Join("userservice", dir)}
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", fmt.Errorf("migrations dir %q: %w", dir, err)
 	}
-	return dir
+	if !info.IsDir() {
+		return "", fmt.Errorf("migrations dir %q is not a directory", dir)
+	}
+	return dir, nil
 }

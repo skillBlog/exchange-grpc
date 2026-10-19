@@ -11,11 +11,15 @@ import (
 const (
 	DefaultOutboxRelayInterval  = 100 * time.Millisecond
 	DefaultOutboxRelayBatchSize = 100
+	// DefaultOutboxClaimTTL — сколько claim считается живым.
+	// Дольше одного Produce (5s), чтобы живую отправку не отобрали, и достаточно коротко,
+	// чтобы упавший процесс не оставил строку в processing навсегда.
+	DefaultOutboxClaimTTL = 30 * time.Second
 )
 
 // OutboxRelay забирает unprocessed события.
-// С Kafka: только брокер, затем processed_at; hub кормит consumer (G5).
-// Без Kafka: сразу hub (тесты и локальный режим).
+// С Kafka: claim коммитится до Produce, затем отдельные транзакции на успех и ошибку.
+// Без Kafka: hub в одной транзакции, сетевого Produce нет.
 type OutboxRelay struct {
 	tx        TxManager
 	queue     OutboxRelayStore
@@ -103,7 +107,9 @@ func (r *OutboxRelay) Drain(ctx context.Context) error {
 	}
 }
 
-// RunOnce берёт одну пачку под tx: Kafka или hub, затем processed_at.
+// RunOnce берёт одну пачку.
+// Kafka: claim, Publish и отметка результата — разные транзакции.
+// Локальный hub: одна транзакция, как раньше.
 func (r *OutboxRelay) RunOnce(ctx context.Context) (processed, claimed int, err error) {
 	if r == nil || r.queue == nil {
 		return 0, 0, nil
@@ -111,7 +117,14 @@ func (r *OutboxRelay) RunOnce(ctx context.Context) (processed, claimed int, err 
 	if r.publisher == nil && r.notifier == nil {
 		return 0, 0, nil
 	}
+	if r.publisher == nil {
+		return r.runLocal(ctx)
+	}
+	return r.runBroker(ctx)
+}
 
+// runLocal пишет в hub внутри одной транзакции. Produce здесь нет.
+func (r *OutboxRelay) runLocal(ctx context.Context) (processed, claimed int, err error) {
 	err = r.tx.WithinTx(ctx, func(ctx context.Context) error {
 		events, claimErr := r.queue.ClaimBatch(ctx, r.batchSize)
 		if claimErr != nil {
@@ -136,19 +149,7 @@ func (r *OutboxRelay) RunOnce(ctx context.Context) (processed, claimed int, err 
 				)
 				continue
 			}
-			if r.publisher != nil {
-				if pubErr := r.publisher.Publish(ctx, event); pubErr != nil {
-					if recErr := r.queue.RecordAttempt(ctx, event.ID); recErr != nil {
-						return recErr
-					}
-					r.log.Error("outbox relay kafka publish failed",
-						zap.String("event_id", event.ID),
-						zap.String("aggregate_id", event.AggregateID),
-						zap.Error(pubErr),
-					)
-					continue
-				}
-			} else if r.notifier != nil {
+			if r.notifier != nil {
 				r.notifier.Publish(update)
 			}
 			done = append(done, event.ID)
@@ -160,4 +161,97 @@ func (r *OutboxRelay) RunOnce(ctx context.Context) (processed, claimed int, err 
 		return r.queue.MarkProcessed(ctx, done)
 	})
 	return processed, claimed, err
+}
+
+// runBroker коммитит claim до Produce. Успех и ошибка фиксируются отдельными транзакциями.
+func (r *OutboxRelay) runBroker(ctx context.Context) (processed, claimed int, err error) {
+	if err = ctx.Err(); err != nil {
+		return 0, 0, err
+	}
+
+	staleBefore := time.Now().Add(-DefaultOutboxClaimTTL)
+	if err = r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		_, relErr := r.queue.ReleaseStaleClaims(ctx, staleBefore)
+		return relErr
+	}); err != nil {
+		return 0, 0, err
+	}
+
+	var events []OutboxEvent
+	if err = r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var claimErr error
+		events, claimErr = r.queue.ClaimBatch(ctx, r.batchSize)
+		return claimErr
+	}); err != nil {
+		return 0, 0, err
+	}
+	claimed = len(events)
+	if claimed == 0 {
+		return 0, 0, nil
+	}
+
+	done := make([]string, 0, claimed)
+	failed := make([]string, 0)
+	var stop error
+	for _, event := range events {
+		if stop = ctx.Err(); stop != nil {
+			break
+		}
+		if _, parseErr := ParseOutboxUpdateEvent(event); parseErr != nil {
+			failed = append(failed, event.ID)
+			r.log.Error("outbox relay skip invalid payload",
+				zap.String("event_id", event.ID),
+				zap.String("aggregate_id", event.AggregateID),
+				zap.Error(parseErr),
+			)
+			continue
+		}
+		if pubErr := r.publisher.Publish(ctx, event); pubErr != nil {
+			failed = append(failed, event.ID)
+			r.log.Error("outbox relay kafka publish failed",
+				zap.String("event_id", event.ID),
+				zap.String("aggregate_id", event.AggregateID),
+				zap.Error(pubErr),
+			)
+			continue
+		}
+		done = append(done, event.ID)
+	}
+
+	// Отметка уже отправленных событий не должна отмениться вместе с остановкой relay.
+	finishCtx := context.WithoutCancel(ctx)
+	if err = r.markProcessed(finishCtx, done); err != nil {
+		return 0, claimed, err
+	}
+	processed = len(done)
+	if err = r.recordAttempts(finishCtx, failed); err != nil {
+		return processed, claimed, err
+	}
+	if stop != nil {
+		return processed, claimed, stop
+	}
+	return processed, claimed, nil
+}
+
+func (r *OutboxRelay) markProcessed(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		return r.queue.MarkProcessed(ctx, ids)
+	})
+}
+
+func (r *OutboxRelay) recordAttempts(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		for _, id := range ids {
+			if err := r.queue.RecordAttempt(ctx, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

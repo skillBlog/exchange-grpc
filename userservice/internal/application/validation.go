@@ -23,11 +23,23 @@ func ValidateEmail(email string) error {
 	return nil
 }
 
+const genericPasswordMessage = "password does not meet requirements"
+
 // ValidatePassword проверяет сложность пароля при регистрации.
+// Наружу уходит одна ошибка: конкретное правило остаётся только во внутреннем логе.
 func ValidatePassword(password string) error {
+	if passwordRejectReason(password) == "" {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", domain.ErrInvalidArgument, genericPasswordMessage)
+}
+
+// passwordRejectReason возвращает код нарушенного правила или пустую строку.
+// Код пишется в лог и не должен попадать в ответ клиенту.
+func passwordRejectReason(password string) string {
 	password = strings.TrimSpace(password)
 	if len(password) < minPasswordLength {
-		return fmt.Errorf("%w: password must be at least %d characters", domain.ErrInvalidArgument, minPasswordLength)
+		return "too_short"
 	}
 
 	var hasUpper, hasLower, hasDigit, hasSpecial bool
@@ -46,14 +58,14 @@ func ValidatePassword(password string) error {
 
 	switch {
 	case !hasUpper:
-		return fmt.Errorf("%w: password must contain at least one uppercase letter", domain.ErrInvalidArgument)
+		return "missing_uppercase"
 	case !hasLower:
-		return fmt.Errorf("%w: password must contain at least one lowercase letter", domain.ErrInvalidArgument)
+		return "missing_lowercase"
 	case !hasDigit:
-		return fmt.Errorf("%w: password must contain at least one digit", domain.ErrInvalidArgument)
+		return "missing_digit"
 	case !hasSpecial:
-		return fmt.Errorf("%w: password must contain at least one special character", domain.ErrInvalidArgument)
+		return "missing_special"
+	default:
+		return ""
 	}
-
-	return nil
 }

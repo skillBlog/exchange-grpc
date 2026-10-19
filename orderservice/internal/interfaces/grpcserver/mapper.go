@@ -8,11 +8,18 @@ import (
 	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
 	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
 	"github.com/exchange-grpc/shared/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func toGRPCError(err error) error {
-	return grpc.ToStatusError(err, "too many requests")
+	return grpc.ToStatusError(err, "too many requests",
+		grpc.ErrorMapping{
+			Sentinel: application.ErrSubscriberDropped,
+			Code:     codes.Unavailable,
+			Message:  "order update stream dropped",
+		},
+	)
 }
 
 func orderSideToDomain(side commonv1.OrderSide) (domain.OrderSide, error) {

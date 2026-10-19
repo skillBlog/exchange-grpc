@@ -235,11 +235,11 @@ func TestProcessCommandMessage_exhaustedRetriesGoToDLQ(t *testing.T) {
 	}
 }
 
-func TestProcessCommandMessage_dlqFailureDoesNotCommit(t *testing.T) {
+func TestProcessCommandMessage_dlqFailureReturnsError(t *testing.T) {
 	dlq := &recordingDLQ{err: errors.New("dlq down")}
 	err := application.ProcessCommandMessage(context.Background(), []byte(`{`), &stubCommandHandler{}, dlq, 1)
-	if err == nil {
-		t.Fatal("expected error when DLQ publish fails")
+	if !errors.Is(err, application.ErrDLQPublish) {
+		t.Fatalf("ProcessCommandMessage() error = %v, want ErrDLQPublish", err)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
@@ -25,6 +26,7 @@ type Event struct {
 // Producer пишет outbox-события в Kafka. Key = aggregate_id (order_id), чтобы события одного ордера шли в одну партицию.
 type Producer struct {
 	writer  *kafkago.Writer
+	brokers []string
 	timeout time.Duration
 }
 
@@ -36,10 +38,12 @@ func NewProducer(brokers []string, topic string, timeout time.Duration) *Produce
 	if topic == "" {
 		topic = "order.events"
 	}
+	stored := append([]string(nil), brokers...)
 	return &Producer{
+		brokers: stored,
 		timeout: timeout,
 		writer: &kafkago.Writer{
-			Addr:                   kafkago.TCP(brokers...),
+			Addr:                   kafkago.TCP(stored...),
 			Topic:                  topic,
 			Balancer:               &kafkago.Hash{},
 			RequiredAcks:           kafkago.RequireAll,
@@ -54,7 +58,7 @@ func (p *Producer) Publish(ctx context.Context, event application.OutboxEvent) e
 	if p == nil || p.writer == nil {
 		return fmt.Errorf("kafka producer is not configured")
 	}
-	msg, err := messageFromEvent(event)
+	msg, err := messageFromEvent(ctx, event)
 	if err != nil {
 		return err
 	}
@@ -71,13 +75,10 @@ func (p *Producer) Ping(ctx context.Context) error {
 	if p == nil || p.writer == nil {
 		return fmt.Errorf("kafka producer is not configured")
 	}
-	addr := p.writer.Addr.String()
-	if addr == "" {
+	if len(p.brokers) == 0 || strings.TrimSpace(p.brokers[0]) == "" {
 		return fmt.Errorf("kafka brokers are empty")
 	}
-	d := net.Dialer{}
-	host := firstHost(addr)
-	conn, err := d.DialContext(ctx, "tcp", host)
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", p.brokers[0])
 	if err != nil {
 		return fmt.Errorf("kafka dial: %w", err)
 	}
@@ -92,7 +93,8 @@ func (p *Producer) Close() error {
 	return p.writer.Close()
 }
 
-func messageFromEvent(event application.OutboxEvent) (kafkago.Message, error) {
+// MarshalEnvelope сериализует outbox-событие в конверт order.events.
+func MarshalEnvelope(event application.OutboxEvent) ([]byte, error) {
 	body, err := json.Marshal(Event{
 		EventID:     event.ID,
 		EventType:   event.EventType,
@@ -101,30 +103,25 @@ func messageFromEvent(event application.OutboxEvent) (kafkago.Message, error) {
 		CreatedAt:   event.CreatedAt,
 	})
 	if err != nil {
-		return kafkago.Message{}, fmt.Errorf("marshal kafka event: %w", err)
+		return nil, fmt.Errorf("marshal kafka event: %w", err)
 	}
-	return kafkago.Message{
-		Key:   []byte(event.AggregateID),
-		Value: body,
-		Headers: []kafkago.Header{
-			{Key: "event_id", Value: []byte(event.ID)},
-			{Key: "event_type", Value: []byte(event.EventType)},
-		},
-	}, nil
+	return body, nil
 }
 
-func firstHost(addr string) string {
-	host, _, err := net.SplitHostPort(addr)
-	if err == nil && host != "" {
-		return addr
+func messageFromEvent(ctx context.Context, event application.OutboxEvent) (kafkago.Message, error) {
+	body, err := MarshalEnvelope(event)
+	if err != nil {
+		return kafkago.Message{}, err
 	}
-	// Addr.String() у kafka.TCP может быть "host:9092,host2:9092".
-	for i := 0; i < len(addr); i++ {
-		if addr[i] == ',' {
-			return addr[:i]
-		}
-	}
-	return addr
+	headers := injectTrace(ctx, []kafkago.Header{
+		{Key: "event_id", Value: []byte(event.ID)},
+		{Key: "event_type", Value: []byte(event.EventType)},
+	})
+	return kafkago.Message{
+		Key:     []byte(event.AggregateID),
+		Value:   body,
+		Headers: headers,
+	}, nil
 }
 
 var _ application.OrderEventPublisher = (*Producer)(nil)

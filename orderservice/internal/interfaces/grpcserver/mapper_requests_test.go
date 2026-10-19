@@ -1,11 +1,15 @@
 package grpcserver
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/exchange-grpc/orderservice/internal/application"
 	"github.com/exchange-grpc/orderservice/internal/domain"
 	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
 	orderv1 "github.com/exchange-grpc/proto/pb/order/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -51,5 +55,19 @@ func TestListOrdersRequestToInput_emptyFilters(t *testing.T) {
 	}
 	if input.Status != "" {
 		t.Fatalf("Status = %q, want empty", input.Status)
+	}
+}
+
+func TestToGRPCError_droppedSubscriberIsUnavailable(t *testing.T) {
+	err := toGRPCError(fmt.Errorf("stream: %w", application.ErrSubscriberDropped))
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatal("dropped subscriber error is not a status")
+	}
+	if st.Code() != codes.Unavailable {
+		t.Fatalf("code = %s, want Unavailable", st.Code())
+	}
+	if st.Message() != "order update stream dropped" {
+		t.Fatalf("message = %q", st.Message())
 	}
 }

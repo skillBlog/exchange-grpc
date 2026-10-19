@@ -224,6 +224,111 @@ func TestOutboxRelay_publisherMarksWithoutHub(t *testing.T) {
 	}
 }
 
+type depthTx struct {
+	depth int
+}
+
+func (d *depthTx) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	d.depth++
+	defer func() { d.depth-- }()
+	return fn(ctx)
+}
+
+type depthPublisher struct {
+	tx    *depthTx
+	depth int
+	calls int
+}
+
+func (p *depthPublisher) Publish(context.Context, application.OutboxEvent) error {
+	p.calls++
+	p.depth = p.tx.depth
+	if p.tx.depth != 0 {
+		return errors.New("publish inside transaction")
+	}
+	return nil
+}
+
+func TestOutboxRelay_publishIsOutsideTransaction(t *testing.T) {
+	outbox := memory.NewOutboxStore()
+	now := time.Now().UTC()
+	orderID := domain.NewOrderID()
+	event, err := marshalTestOutboxEvent(orderID, "11111111-1111-1111-1111-111111111111", "BTC-USDT", domain.OrderStatusCreated, now)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	if err := outbox.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+
+	tx := &depthTx{}
+	bus := &depthPublisher{tx: tx}
+	relay := application.NewOutboxRelay(tx, outbox, &recordingNotifier{}, bus, nil, time.Millisecond, 10)
+
+	processed, claimed, err := relay.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if claimed != 1 || processed != 1 {
+		t.Fatalf("processed=%d claimed=%d, want 1 1", processed, claimed)
+	}
+	if bus.calls != 1 || bus.depth != 0 {
+		t.Fatalf("publish calls=%d depth=%d, want 1 and 0", bus.calls, bus.depth)
+	}
+
+	processed, claimed, err = relay.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("second RunOnce() error = %v", err)
+	}
+	if claimed != 0 || processed != 0 {
+		t.Fatalf("second poll processed=%d claimed=%d, want 0 0", processed, claimed)
+	}
+}
+
+func TestOutboxRelay_staleClaimIsPublishedOnce(t *testing.T) {
+	outbox := memory.NewOutboxStore()
+	now := time.Now().UTC()
+	orderID := domain.NewOrderID()
+	event, err := marshalTestOutboxEvent(orderID, "11111111-1111-1111-1111-111111111111", "BTC-USDT", domain.OrderStatusCreated, now)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	if err := outbox.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+
+	claimed, err := outbox.ClaimBatch(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ClaimBatch() error = %v", err)
+	}
+	if len(claimed) != 1 {
+		t.Fatalf("claimed %d, want 1", len(claimed))
+	}
+	outbox.ExpireClaim(event.ID, time.Now().Add(-time.Hour))
+
+	bus := &recordingPublisher{}
+	relay := application.NewOutboxRelay(memory.NewTxManager(), outbox, &recordingNotifier{}, bus, nil, time.Millisecond, 10)
+
+	processed, claimedN, err := relay.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if claimedN != 1 || processed != 1 {
+		t.Fatalf("processed=%d claimed=%d, want 1 1", processed, claimedN)
+	}
+	if len(bus.events) != 1 || bus.events[0].ID != event.ID {
+		t.Fatalf("publisher events = %+v", bus.events)
+	}
+
+	processed, claimedN, err = relay.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("second RunOnce() error = %v", err)
+	}
+	if claimedN != 0 || processed != 0 || len(bus.events) != 1 {
+		t.Fatalf("second poll processed=%d claimed=%d published=%d, want 0 0 1", processed, claimedN, len(bus.events))
+	}
+}
+
 func TestOutboxRelay_publisherFailureSkipsHubAndMark(t *testing.T) {
 	outbox := memory.NewOutboxStore()
 	now := time.Now().UTC()

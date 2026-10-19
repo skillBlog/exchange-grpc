@@ -12,6 +12,10 @@ import (
 
 const defaultCommandMaxAttempts = 5
 
+// ErrDLQPublish — яд не удалось записать в DLQ.
+// Consumer логирует эту ошибку и коммитит offset, чтобы партиция не стояла.
+var ErrDLQPublish = errors.New("dlq publish failed")
+
 // OrderCommand — входящая команда смены статуса (топик order.commands).
 type OrderCommand struct {
 	CommandID string
@@ -142,7 +146,9 @@ func IsPermanentCommandError(err error) bool {
 }
 
 // ProcessCommandMessage разбирает payload, ретраит транзиентные ошибки in-process
-// и пишет в DLQ яд / исчерпанные ретраи. nil = offset можно коммитить.
+// и пишет в DLQ яд / исчерпанные ретраи.
+// nil — обработка или запись в DLQ прошли, offset можно коммитить.
+// ErrDLQPublish — записать яд не удалось; consumer логирует и тоже коммитит offset.
 func ProcessCommandMessage(ctx context.Context, raw []byte, handler OrderCommandHandler, dlq DeadLetterSink, maxAttempts int) error {
 	if maxAttempts <= 0 {
 		maxAttempts = defaultCommandMaxAttempts
@@ -175,15 +181,15 @@ func ProcessCommandMessage(ctx context.Context, raw []byte, handler OrderCommand
 }
 
 func publishCommandDLQ(ctx context.Context, dlq DeadLetterSink, original []byte, reason error) error {
-	if dlq == nil {
-		return fmt.Errorf("dlq: %w", reason)
-	}
 	msg := "unknown"
 	if reason != nil {
 		msg = reason.Error()
 	}
+	if dlq == nil {
+		return fmt.Errorf("%w: dlq is not configured: %s", ErrDLQPublish, msg)
+	}
 	if err := dlq.Publish(ctx, original, msg); err != nil {
-		return fmt.Errorf("dlq publish: %w", err)
+		return fmt.Errorf("%w: %s: %w", ErrDLQPublish, msg, err)
 	}
 	return nil
 }

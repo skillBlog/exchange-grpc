@@ -1,8 +1,6 @@
 package grpcserver
 
 import (
-	"strings"
-
 	commonv1 "github.com/exchange-grpc/proto/pb/common/v1"
 	userv1 "github.com/exchange-grpc/proto/pb/user/v1"
 	"github.com/exchange-grpc/shared/roles"
@@ -67,12 +65,8 @@ func (Mapper) LogoutRequestToInput(req *userv1.LogoutRequest) application.Logout
 func rolesToProto(values []string) []commonv1.Role {
 	result := make([]commonv1.Role, 0, len(values))
 	for _, value := range values {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
 		role, ok := roles.Parse(value)
 		if !ok {
-			result = append(result, commonv1.Role_ROLE_UNSPECIFIED)
 			continue
 		}
 		switch role {
@@ -82,8 +76,6 @@ func rolesToProto(values []string) []commonv1.Role {
 			result = append(result, commonv1.Role_ROLE_TRADER)
 		case roles.RoleAdmin:
 			result = append(result, commonv1.Role_ROLE_ADMIN)
-		default:
-			result = append(result, commonv1.Role_ROLE_UNSPECIFIED)
 		}
 	}
 	return result

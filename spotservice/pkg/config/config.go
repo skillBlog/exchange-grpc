@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/exchange-grpc/shared/envparse"
@@ -39,6 +40,7 @@ type Config struct {
 	RedisPoolSize         int
 	RedisMaxRetries       int
 	MetricsAddr           string
+	AppEnv                string
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
@@ -59,6 +61,18 @@ func LoadConfig() (Config, error) {
 		RedisPoolSize:         env.Int("REDIS_POOL_SIZE", defaultRedisPoolSize),
 		RedisMaxRetries:       env.Int("REDIS_MAX_RETRIES", defaultRedisMaxRetries),
 		MetricsAddr:           env.String("METRICS_ADDR", defaultMetricsAddr),
+		AppEnv:                env.String("APP_ENV", "local"),
 	}
 	return cfg, env.Err()
+}
+
+// MemoryRateLimitFallbackAllowed разрешает локальный счётчик только в local/dev.
+// В остальных окружениях недоступный Redis должен останавливать запуск.
+func (c Config) MemoryRateLimitFallbackAllowed() bool {
+	switch strings.ToLower(strings.TrimSpace(c.AppEnv)) {
+	case "local", "dev", "development":
+		return true
+	default:
+		return false
+	}
 }

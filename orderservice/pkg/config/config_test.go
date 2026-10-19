@@ -36,6 +36,15 @@ func TestLoadConfig_kafkaBrokersCSV(t *testing.T) {
 	}
 }
 
+func TestMemoryRateLimitFallbackAllowed(t *testing.T) {
+	if !(config.Config{AppEnv: "local"}).MemoryRateLimitFallbackAllowed() {
+		t.Fatal("local must allow in-memory rate limit fallback")
+	}
+	if (config.Config{AppEnv: "production"}).MemoryRateLimitFallbackAllowed() {
+		t.Fatal("production must not allow in-memory rate limit fallback")
+	}
+}
+
 func TestLoadConfig_emptyKafkaBrokers(t *testing.T) {
 	t.Setenv("KAFKA_BROKERS", "")
 

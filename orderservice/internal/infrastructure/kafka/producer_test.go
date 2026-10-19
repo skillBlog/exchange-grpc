@@ -1,7 +1,9 @@
 package kafka
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"testing"
 	"time"
 
@@ -15,7 +17,7 @@ func TestMessageFromEvent_usesOrderIDKeyAndEnvelope(t *testing.T) {
 	eventID := uuid.Must(uuid.NewV7()).String()
 	payload := json.RawMessage(`{"order_id":"` + orderID + `","status":"created"}`)
 
-	msg, err := messageFromEvent(application.OutboxEvent{
+	msg, err := messageFromEvent(context.Background(), application.OutboxEvent{
 		ID:          eventID,
 		AggregateID: orderID,
 		EventType:   application.EventTypeOrderCreated,
@@ -51,5 +53,43 @@ func TestMessageFromEvent_usesOrderIDKeyAndEnvelope(t *testing.T) {
 
 	if len(msg.Headers) != 2 {
 		t.Fatalf("headers = %d, want 2", len(msg.Headers))
+	}
+}
+
+func TestPing_dialsFirstBroker(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+	defer ln.Close()
+
+	accepted := make(chan struct{})
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		_ = conn.Close()
+		close(accepted)
+	}()
+
+	producer := NewProducer([]string{ln.Addr().String(), "192.0.2.1:1"}, "order.events", time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := producer.Ping(ctx); err != nil {
+		t.Fatalf("Ping() error = %v", err)
+	}
+	select {
+	case <-accepted:
+	case <-ctx.Done():
+		t.Fatal("Ping dialed a broker other than the first")
+	}
+}
+
+func TestPing_emptyBrokers(t *testing.T) {
+	producer := NewProducer(nil, "order.events", time.Second)
+	err := producer.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected error for empty brokers")
 	}
 }

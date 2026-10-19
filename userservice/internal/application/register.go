@@ -64,8 +64,9 @@ func (uc *Register) Execute(ctx context.Context, input RegisterInput) (out Regis
 	if err = ValidateEmail(email); err != nil {
 		return RegisterOutput{}, err
 	}
-	if err = ValidatePassword(password); err != nil {
-		return RegisterOutput{}, err
+	if reason := passwordRejectReason(password); reason != "" {
+		uc.log.Warn("registration password rejected", zap.String("reason", reason))
+		return RegisterOutput{}, fmt.Errorf("%w: %s", domain.ErrInvalidArgument, genericPasswordMessage)
 	}
 
 	hash, err := hashPassword(ctx, uc.hasher, password)

@@ -20,7 +20,6 @@ type LoginLimiter struct {
 	maxEmails   int
 	window      time.Duration
 	now         func() time.Time
-	lastSweep   time.Time
 }
 
 // NewLoginLimiter создаёт rate limiter для Login.
@@ -51,11 +50,7 @@ func (l *LoginLimiter) Allow(ctx context.Context, email string) error {
 
 	now := l.now()
 	cutoff := now.Add(-l.window)
-
-	if l.lastSweep.IsZero() || now.Sub(l.lastSweep) >= l.window {
-		l.sweepLocked(cutoff)
-		l.lastSweep = now
-	}
+	l.sweepLocked(cutoff)
 
 	history := l.attempts[email]
 	active := history[:0]
@@ -64,7 +59,6 @@ func (l *LoginLimiter) Allow(ctx context.Context, email string) error {
 			active = append(active, ts)
 		}
 	}
-
 	if len(active) == 0 {
 		delete(l.attempts, email)
 	}
@@ -73,10 +67,19 @@ func (l *LoginLimiter) Allow(ctx context.Context, email string) error {
 		l.attempts[email] = active
 		return fmt.Errorf("%w: too many login attempts", domain.ErrRateLimited)
 	}
+	if _, exists := l.attempts[email]; !exists && len(l.attempts) >= l.emailCap() {
+		return fmt.Errorf("%w: too many login attempts", domain.ErrRateLimited)
+	}
 
-	l.evictIfOverCapLocked(email, cutoff)
 	l.attempts[email] = append(active, now)
 	return nil
+}
+
+func (l *LoginLimiter) emailCap() int {
+	if l.maxEmails <= 0 {
+		return defaultMaxTrackedEmails
+	}
+	return l.maxEmails
 }
 
 func (l *LoginLimiter) sweepLocked(cutoff time.Time) {
@@ -92,26 +95,6 @@ func (l *LoginLimiter) sweepLocked(cutoff time.Time) {
 			continue
 		}
 		l.attempts[email] = kept
-	}
-}
-
-func (l *LoginLimiter) evictIfOverCapLocked(current string, cutoff time.Time) {
-	maxEmails := l.maxEmails
-	if maxEmails <= 0 {
-		maxEmails = defaultMaxTrackedEmails
-	}
-	if len(l.attempts) < maxEmails {
-		return
-	}
-	l.sweepLocked(cutoff)
-	if len(l.attempts) < maxEmails {
-		return
-	}
-	for email := range l.attempts {
-		if email != current {
-			delete(l.attempts, email)
-			return
-		}
 	}
 }
 

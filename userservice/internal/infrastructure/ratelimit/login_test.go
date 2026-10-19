@@ -21,18 +21,27 @@ func TestLoginLimiter_uniqueEmailsAreCapped(t *testing.T) {
 		now:         time.Now,
 	}
 
-	for i := 0; i < 40; i++ {
+	for i := 0; i < 8; i++ {
 		email := "user" + strconv.Itoa(i) + "@example.com"
 		if err := limiter.Allow(context.Background(), email); err != nil {
 			t.Fatalf("Allow(%s) error = %v", email, err)
 		}
 	}
+	err := limiter.Allow(context.Background(), "overflow@example.com")
+	if !errors.Is(err, domain.ErrRateLimited) {
+		t.Fatalf("overflow Allow() error = %v, want ErrRateLimited", err)
+	}
 
 	limiter.mu.Lock()
-	n := len(limiter.attempts)
-	limiter.mu.Unlock()
-	if n > 8 {
-		t.Fatalf("tracked emails = %d, want <= 8", n)
+	defer limiter.mu.Unlock()
+	if len(limiter.attempts) != 8 {
+		t.Fatalf("tracked emails = %d, want 8", len(limiter.attempts))
+	}
+	if _, ok := limiter.attempts["overflow@example.com"]; ok {
+		t.Fatal("rejected email must not be stored")
+	}
+	if _, ok := limiter.attempts["user0@example.com"]; !ok {
+		t.Fatal("oldest active email must stay tracked")
 	}
 }
 
@@ -63,6 +72,41 @@ func TestLoginLimiter_expiredEntriesAreRemoved(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("tracked emails = %d, want 1", n)
+	}
+}
+
+func TestLoginLimiter_fullMapKeepsActiveCounter(t *testing.T) {
+	clock := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	limiter := &LoginLimiter{
+		attempts:    make(map[string][]time.Time),
+		maxAttempts: 2,
+		maxEmails:   1,
+		window:      time.Minute,
+		now:         func() time.Time { return clock },
+	}
+
+	if err := limiter.Allow(context.Background(), "oldest@example.com"); err != nil {
+		t.Fatalf("Allow(oldest) error = %v", err)
+	}
+	if err := limiter.Allow(context.Background(), "new@example.com"); !errors.Is(err, domain.ErrRateLimited) {
+		t.Fatalf("Allow(new) error = %v, want ErrRateLimited", err)
+	}
+	clock = clock.Add(time.Second)
+	if err := limiter.Allow(context.Background(), "oldest@example.com"); err != nil {
+		t.Fatalf("second Allow(oldest) error = %v", err)
+	}
+	err := limiter.Allow(context.Background(), "oldest@example.com")
+	if !errors.Is(err, domain.ErrRateLimited) {
+		t.Fatalf("third Allow(oldest) error = %v, want ErrRateLimited", err)
+	}
+
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	if len(limiter.attempts) != 1 {
+		t.Fatalf("tracked emails = %d, want 1", len(limiter.attempts))
+	}
+	if got := len(limiter.attempts["oldest@example.com"]); got != 2 {
+		t.Fatalf("oldest attempts = %d, want 2", got)
 	}
 }
 
@@ -120,9 +164,13 @@ func TestLoginLimiter_concurrentUniqueEmailsStayBounded(t *testing.T) {
 	wg.Wait()
 
 	limiter.mu.Lock()
-	n := len(limiter.attempts)
-	limiter.mu.Unlock()
-	if n > 16 {
-		t.Fatalf("tracked emails = %d, want <= 16", n)
+	defer limiter.mu.Unlock()
+	if len(limiter.attempts) > 16 {
+		t.Fatalf("tracked emails = %d, want <= 16", len(limiter.attempts))
+	}
+	for email, history := range limiter.attempts {
+		if len(history) == 0 {
+			t.Fatalf("email %s has an empty history", email)
+		}
 	}
 }

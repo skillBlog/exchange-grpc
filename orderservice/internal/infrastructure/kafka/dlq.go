@@ -53,9 +53,9 @@ func (p *DeadLetterPublisher) Publish(ctx context.Context, original []byte, reas
 	defer cancel()
 	if err := p.writer.WriteMessages(ctx, kafkago.Message{
 		Value: original,
-		Headers: []kafkago.Header{
+		Headers: injectTrace(ctx, []kafkago.Header{
 			{Key: "dlq-reason", Value: []byte(reason)},
-		},
+		}),
 	}); err != nil {
 		return fmt.Errorf("kafka dlq write: %w", err)
 	}

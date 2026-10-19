@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/exchange-grpc/shared/envparse"
@@ -41,6 +42,7 @@ type Config struct {
 	LogLevelAddr       string
 	MetricsAddr        string
 	BcryptCost         int
+	AppEnv             string
 }
 
 // LoadConfig читает конфигурацию из переменных окружения.
@@ -62,6 +64,18 @@ func LoadConfig() (Config, error) {
 		LogLevelAddr:       os.Getenv("LOG_LEVEL_ADDR"),
 		MetricsAddr:        env.String("METRICS_ADDR", defaultMetricsAddr),
 		BcryptCost:         env.Int("BCRYPT_COST", defaultBcryptCost),
+		AppEnv:             env.String("APP_ENV", "local"),
 	}
 	return cfg, env.Err()
+}
+
+// MemoryRateLimitFallbackAllowed разрешает локальный счётчик только в local/dev.
+// В остальных окружениях недоступный Redis должен останавливать запуск.
+func (c Config) MemoryRateLimitFallbackAllowed() bool {
+	switch strings.ToLower(strings.TrimSpace(c.AppEnv)) {
+	case "local", "dev", "development":
+		return true
+	default:
+		return false
+	}
 }

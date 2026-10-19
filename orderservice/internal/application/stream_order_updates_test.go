@@ -77,6 +77,89 @@ func TestStreamOrderUpdates_closesOnTerminalStatus(t *testing.T) {
 	}
 }
 
+func TestStreamOrderUpdates_slowSubscriberReconnectsFromRepository(t *testing.T) {
+	repo := memory.NewOrderRepository()
+	orderHub := hub.NewUpdateHub(1, logger.NewNop(), 30*time.Millisecond)
+	uc := application.NewStreamOrderUpdates(repo, orderHub)
+
+	now := time.Now().UTC()
+	order, err := domain.NewOrder(domain.NewOrderID(), "11111111-1111-1111-1111-111111111111", "BTC-USDT", domain.OrderSideBuy, domain.Money{}, mustDecimal(t, "1"), now)
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	if err := repo.Create(context.Background(), order); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	subscribed := make(chan struct{})
+	inSend := make(chan struct{})
+	release := make(chan struct{})
+	errCh := make(chan error, 1)
+	go func() {
+		var snapshot, blocked bool
+		errCh <- uc.Execute(context.Background(), application.StreamOrderUpdatesInput{
+			OrderID: order.ID,
+			UserID:  "11111111-1111-1111-1111-111111111111",
+		}, func(update application.UpdateEvent) error {
+			if !snapshot {
+				snapshot = true
+				close(subscribed)
+				return nil
+			}
+			if !blocked {
+				blocked = true
+				close(inSend)
+				<-release
+			}
+			return nil
+		})
+	}()
+
+	select {
+	case <-subscribed:
+	case <-time.After(time.Second):
+		t.Fatal("snapshot was not sent")
+	}
+	time.Sleep(50 * time.Millisecond)
+	orderHub.Publish(application.UpdateEvent{OrderID: order.ID, Status: domain.OrderStatusCreated, UpdatedAt: now})
+	select {
+	case <-inSend:
+	case <-time.After(time.Second):
+		t.Fatal("live update was not delivered")
+	}
+	orderHub.Publish(application.UpdateEvent{OrderID: order.ID, Status: domain.OrderStatusCreated, UpdatedAt: now})
+	orderHub.Publish(application.UpdateEvent{OrderID: order.ID, Status: domain.OrderStatusCreated, UpdatedAt: now})
+	close(release)
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, application.ErrSubscriberDropped) {
+			t.Fatalf("error = %v, want ErrSubscriberDropped", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stream did not end after the subscriber was dropped")
+	}
+
+	later := now.Add(time.Second)
+	if err := repo.UpdateStatus(context.Background(), order.ID, domain.OrderStatusCreated, domain.OrderStatusFilled, later); err != nil {
+		t.Fatalf("UpdateStatus() error = %v", err)
+	}
+	var sent []domain.OrderStatus
+	err = uc.Execute(context.Background(), application.StreamOrderUpdatesInput{
+		OrderID: order.ID,
+		UserID:  "11111111-1111-1111-1111-111111111111",
+	}, func(update application.UpdateEvent) error {
+		sent = append(sent, update.Status)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("reconnect Execute() error = %v", err)
+	}
+	if len(sent) != 1 || sent[0] != domain.OrderStatusFilled {
+		t.Fatalf("reconnect sent = %v, want [filled] from repository", sent)
+	}
+}
+
 func TestStreamOrderUpdates_nilHubReturnsImmediately(t *testing.T) {
 	repo := memory.NewOrderRepository()
 	uc := application.NewStreamOrderUpdates(repo, nil)

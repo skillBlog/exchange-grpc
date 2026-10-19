@@ -3,11 +3,18 @@ package kafka
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
 
 	"github.com/exchange-grpc/orderservice/internal/application"
+	"github.com/exchange-grpc/shared/tracing"
 	kafkago "github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 )
+
+// DefaultCommandShutdownGrace — сколько текущая команда может дописаться после отмены Run.
+// Новые FetchMessage после отмены не стартуют.
+const DefaultCommandShutdownGrace = 5 * time.Second
 
 // DefaultCommandGroupID шарится между репликами: каждая команда обрабатывается один раз.
 const DefaultCommandGroupID = "orderservice-commands"
@@ -64,7 +71,10 @@ func NewCommandConsumer(
 	}
 }
 
-// Run читает команды до отмены ctx. Яд уходит в DLQ, offset коммитится — партиция не стопорится.
+// Run читает команды до отмены ctx.
+// Offset коммитится после успешной обработки и после залогированной ошибки DLQ.
+// До успешного результата offset не коммитится. При отмене новые fetch не стартуют,
+// уже взятому сообщению даётся DefaultCommandShutdownGrace дописать обработку и commit.
 func (c *CommandConsumer) Run(ctx context.Context) {
 	if c == nil || c.reader == nil {
 		return
@@ -81,31 +91,109 @@ func (c *CommandConsumer) Run(ctx context.Context) {
 			continue
 		}
 
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-			err := application.ProcessCommandMessage(ctx, msg.Value, c.handler, c.dlq, c.maxAttempts)
-			if err == nil {
-				break
-			}
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return
-			}
-			c.log.Error("kafka command processing failed, retrying same message",
+		if err := c.finishMessage(ctx, msg); err != nil {
+			return
+		}
+	}
+}
+
+// finishMessage обрабатывает уже полученное сообщение.
+// Отмена ctx не обрывает его сразу: есть короткое окно на обработку и commit.
+func (c *CommandConsumer) finishMessage(ctx context.Context, msg kafkago.Message) error {
+	workCtx, stop := contextWithShutdownGrace(ctx, DefaultCommandShutdownGrace)
+	defer stop()
+
+	if err := c.process(workCtx, msg); err != nil {
+		return err
+	}
+	if err := c.reader.CommitMessages(workCtx, msg); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		c.log.Error("kafka command consumer commit failed", zap.Error(err))
+	}
+	return nil
+}
+
+func (c *CommandConsumer) process(ctx context.Context, msg kafkago.Message) error {
+	ctx = extractTrace(ctx, msg.Headers)
+	ctx, span := tracing.Start(ctx, "kafka.consume order.commands",
+		tracing.Attr("messaging.destination", msg.Topic),
+	)
+	var spanErr error
+	defer tracing.End(span, &spanErr)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			spanErr = err
+			return err
+		}
+		last := application.ProcessCommandMessage(ctx, msg.Value, c.handler, c.dlq, c.maxAttempts)
+		if last == nil {
+			spanErr = nil
+			return nil
+		}
+		// Окно остановки истекло: offset не коммитим, доставка повторится.
+		if ctx.Err() != nil {
+			spanErr = last
+			return last
+		}
+		if errors.Is(last, application.ErrDLQPublish) {
+			spanErr = last
+			c.log.Error("kafka command dlq publish failed, committing offset",
 				zap.String("topic", msg.Topic),
 				zap.Int("partition", msg.Partition),
 				zap.Int64("offset", msg.Offset),
-				zap.Error(err),
+				zap.Error(last),
 			)
+			return nil
 		}
+		if errors.Is(last, context.Canceled) || errors.Is(last, context.DeadlineExceeded) {
+			spanErr = last
+			return last
+		}
+		spanErr = last
+		c.log.Error("kafka command processing failed, retrying same message",
+			zap.String("topic", msg.Topic),
+			zap.Int("partition", msg.Partition),
+			zap.Int64("offset", msg.Offset),
+			zap.Error(last),
+		)
+	}
+}
 
-		if err := c.reader.CommitMessages(ctx, msg); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return
+// contextWithShutdownGrace отменяет результат через grace после отмены parent.
+// Пока parent жив, работа не ограничена этим таймером. stop завершает её сразу.
+func contextWithShutdownGrace(parent context.Context, grace time.Duration) (context.Context, func()) {
+	if grace <= 0 {
+		grace = DefaultCommandShutdownGrace
+	}
+	ctx, cancel := context.WithCancel(context.WithoutCancel(parent))
+	stopped := make(chan struct{})
+	go func() {
+		select {
+		case <-parent.Done():
+			timer := time.NewTimer(grace)
+			select {
+			case <-timer.C:
+				cancel()
+			case <-stopped:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 			}
-			c.log.Error("kafka command consumer commit failed", zap.Error(err))
+		case <-stopped:
 		}
+	}()
+	var once sync.Once
+	return ctx, func() {
+		once.Do(func() {
+			close(stopped)
+			cancel()
+		})
 	}
 }
 

@@ -40,30 +40,31 @@ const (
 
 // Config содержит runtime-конфигурацию orderservice.
 type Config struct {
-	GRPCAddr               string
-	SpotServiceHost        string
-	JWTSecret              string
-	AccessTokenTTL         time.Duration
-	SpotGRPCTimeout        time.Duration
-	OrderHubBufferSize     int
-	OrderHubPublishTimeout time.Duration
-	IdempotencyTTL         time.Duration
-	HealthCheckTimeout     time.Duration
-	DatabaseURL            string
-	MigrationsDir          string
-	RedisURL               string
-	RedisPoolSize          int
-	RedisMaxRetries        int
-	LogLevelAddr           string
-	MetricsAddr            string
-	CreateOrderRateLimit   CreateOrderRateLimitConfig
-	KafkaBrokers           []string
-	KafkaOrderTopic        string
-	KafkaProduceTimeout    time.Duration
-	KafkaCommandTopic      string
-	KafkaCommandDLQTopic   string
-	KafkaCommandGroup      string
+	GRPCAddr                string
+	SpotServiceHost         string
+	JWTSecret               string
+	AccessTokenTTL          time.Duration
+	SpotGRPCTimeout         time.Duration
+	OrderHubBufferSize      int
+	OrderHubPublishTimeout  time.Duration
+	IdempotencyTTL          time.Duration
+	HealthCheckTimeout      time.Duration
+	DatabaseURL             string
+	MigrationsDir           string
+	RedisURL                string
+	RedisPoolSize           int
+	RedisMaxRetries         int
+	LogLevelAddr            string
+	MetricsAddr             string
+	CreateOrderRateLimit    CreateOrderRateLimitConfig
+	KafkaBrokers            []string
+	KafkaOrderTopic         string
+	KafkaProduceTimeout     time.Duration
+	KafkaCommandTopic       string
+	KafkaCommandDLQTopic    string
+	KafkaCommandGroup       string
 	KafkaCommandMaxAttempts int
+	AppEnv                  string
 }
 
 // CreateOrderRateLimitConfig — лимиты CreateOrder из ENV.
@@ -111,8 +112,20 @@ func LoadConfig() (Config, error) {
 		KafkaCommandDLQTopic:    env.String("KAFKA_COMMAND_DLQ_TOPIC", defaultKafkaCommandDLQTopic),
 		KafkaCommandGroup:       env.String("KAFKA_COMMAND_GROUP", defaultKafkaCommandGroup),
 		KafkaCommandMaxAttempts: env.Int("KAFKA_COMMAND_MAX_ATTEMPTS", defaultKafkaCommandMaxAttempts),
+		AppEnv:                  env.String("APP_ENV", "local"),
 	}
 	return cfg, env.Err()
+}
+
+// MemoryRateLimitFallbackAllowed разрешает локальный счётчик только в local/dev.
+// В остальных окружениях недоступный Redis должен останавливать запуск.
+func (c Config) MemoryRateLimitFallbackAllowed() bool {
+	switch strings.ToLower(strings.TrimSpace(c.AppEnv)) {
+	case "local", "dev", "development":
+		return true
+	default:
+		return false
+	}
 }
 
 func splitCSV(raw string) []string {

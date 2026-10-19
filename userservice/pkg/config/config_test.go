@@ -19,6 +19,26 @@ func TestLoadConfig_invalidAccessTTL(t *testing.T) {
 	}
 }
 
+func TestMemoryRateLimitFallbackAllowed(t *testing.T) {
+	tests := []struct {
+		env  string
+		want bool
+	}{
+		{env: "local", want: true},
+		{env: "dev", want: true},
+		{env: "development", want: true},
+		{env: "production", want: false},
+		{env: "prod", want: false},
+		{env: "staging", want: false},
+	}
+	for _, tc := range tests {
+		cfg := config.Config{AppEnv: tc.env}
+		if got := cfg.MemoryRateLimitFallbackAllowed(); got != tc.want {
+			t.Fatalf("APP_ENV=%s allowed = %v, want %v", tc.env, got, tc.want)
+		}
+	}
+}
+
 func TestLoadConfig_emptyAccessTTLUsesDefault(t *testing.T) {
 	t.Setenv("JWT_ACCESS_TTL", "")
 	cfg, err := config.LoadConfig()
